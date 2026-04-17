@@ -35,7 +35,7 @@ ANKI_URL = "http://localhost:8765"
 ZH_VOICE = "Meijia (Premium)"  # Taiwan Mandarin
 EN_VOICE = "Zoe (Premium)"  # US English
 
-PAUSE_SECONDS = 3          # silence gap for recall
+PAUSE_SECONDS = 3  # silence gap for recall
 WORKERS = 4
 
 OUTPUT_DIR = "audio-practice"  # relative to working dir
@@ -43,6 +43,7 @@ OUTPUT_DIR = "audio-practice"  # relative to working dir
 # ══════════════════════════════════════════════════════════════════════
 # ANKI CONNECT
 # ══════════════════════════════════════════════════════════════════════
+
 
 def ac(action, **params):
     req = urllib.request.Request(
@@ -53,7 +54,7 @@ def ac(action, **params):
         resp = json.loads(urllib.request.urlopen(req, timeout=60).read())
     except Exception as e:
         print(f"ERROR: Cannot reach AnkiConnect at {ANKI_URL}")
-        print(f"  Make sure Anki is running with AnkiConnect installed.")
+        print("  Make sure Anki is running with AnkiConnect installed.")
         print(f"  ({e})")
         sys.exit(1)
     if resp.get("error"):
@@ -74,11 +75,13 @@ def fetch_from_anki(query):
         english = fields.get("English", {}).get("value", "").strip()
         pinyin = fields.get("Pinyin", {}).get("value", "").strip()
         if hanzi and english:
-            entries.append({
-                "hanzi": hanzi,
-                "english": english,
-                "pinyin": pinyin,
-            })
+            entries.append(
+                {
+                    "hanzi": hanzi,
+                    "english": english,
+                    "pinyin": pinyin,
+                }
+            )
     return entries
 
 
@@ -86,19 +89,22 @@ def fetch_from_anki(query):
 # FILE PARSER (same format as import-cards.py)
 # ══════════════════════════════════════════════════════════════════════
 
+
 def parse_file(path):
     with open(path) as f:
         text = f.read()
     entries = []
     blocks = re.split(r"\n(?=\d{4}\n)", text.strip())
     for block in blocks:
-        lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
+        lines = [line.strip() for line in block.strip().split("\n") if line.strip()]
         if len(lines) >= 4 and re.match(r"^\d{4}$", lines[0]):
-            entries.append({
-                "hanzi": lines[3],
-                "english": lines[1],
-                "pinyin": lines[2],
-            })
+            entries.append(
+                {
+                    "hanzi": lines[3],
+                    "english": lines[1],
+                    "pinyin": lines[2],
+                }
+            )
     return entries
 
 
@@ -114,11 +120,13 @@ def say_to_wav(text, voice, out_path):
     aiff = out_path + ".aiff"
     subprocess.run(
         ["say", "-v", voice, "-o", aiff, text],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     subprocess.run(
         ["ffmpeg", "-y", "-i", aiff, out_path],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     os.remove(aiff)
 
@@ -126,10 +134,19 @@ def say_to_wav(text, voice, out_path):
 def generate_silence(duration_s, out_path):
     """Generate a silent WAV file matching TTS sample rate."""
     subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i",
-         f"anullsrc=r={TTS_SAMPLE_RATE}:cl=mono", "-t", str(duration_s),
-         out_path],
-        check=True, capture_output=True,
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anullsrc=r={TTS_SAMPLE_RATE}:cl=mono",
+            "-t",
+            str(duration_s),
+            out_path,
+        ],
+        check=True,
+        capture_output=True,
     )
 
 
@@ -141,10 +158,25 @@ def concat_audio(parts, out_path):
         listfile = f.name
     try:
         subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-             "-i", listfile, "-c:a", "aac", "-b:a", "128k",
-             "-movflags", "+faststart", out_path],
-            check=True, capture_output=True,
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                listfile,
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
+                out_path,
+            ],
+            check=True,
+            capture_output=True,
         )
     finally:
         os.remove(listfile)
@@ -196,20 +228,38 @@ def build_single_track(args):
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
 
+
 def main():
     parser = argparse.ArgumentParser(description="Generate Chinese practice audio tracks")
-    parser.add_argument("--source", choices=["anki", "file"], required=True,
-                        help="Data source: 'anki' (AnkiConnect query) or 'file' (text file)")
+    parser.add_argument(
+        "--source",
+        choices=["anki", "file"],
+        required=True,
+        help="Data source: 'anki' (AnkiConnect query) or 'file' (text file)",
+    )
     parser.add_argument("--query", help="AnkiConnect search query (required if --source anki)")
     parser.add_argument("--file", help="Path to vocab text file (required if --source file)")
-    parser.add_argument("--mode", choices=["recognition", "production", "both"], default="both",
-                        help="Which track type(s) to generate (default: both)")
-    parser.add_argument("--pause", type=int, default=PAUSE_SECONDS,
-                        help=f"Pause duration in seconds (default: {PAUSE_SECONDS})")
-    parser.add_argument("--batch", type=int, default=0,
-                        help="Batch entries into longer tracks of N items each (0 = individual files)")
-    parser.add_argument("--output", default=OUTPUT_DIR,
-                        help=f"Output directory (default: {OUTPUT_DIR})")
+    parser.add_argument(
+        "--mode",
+        choices=["recognition", "production", "both"],
+        default="both",
+        help="Which track type(s) to generate (default: both)",
+    )
+    parser.add_argument(
+        "--pause",
+        type=int,
+        default=PAUSE_SECONDS,
+        help=f"Pause duration in seconds (default: {PAUSE_SECONDS})",
+    )
+    parser.add_argument(
+        "--batch",
+        type=int,
+        default=0,
+        help="Batch entries into longer tracks of N items each (0 = individual files)",
+    )
+    parser.add_argument(
+        "--output", default=OUTPUT_DIR, help=f"Output directory (default: {OUTPUT_DIR})"
+    )
     args = parser.parse_args()
 
     pause = args.pause
@@ -244,9 +294,9 @@ def main():
     modes = ["recognition", "production"] if args.mode == "both" else [args.mode]
 
     for mode in modes:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Generating {mode} tracks...")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         mode_dir = os.path.join(args.output, mode)
         os.makedirs(mode_dir, exist_ok=True)
@@ -267,7 +317,7 @@ def main():
                         results[idx] = result
                         done += 1
                         if done % 20 == 0 or done == len(entries):
-                            print(f"  {done}/{len(entries)} ({time.time()-t0:.0f}s)")
+                            print(f"  {done}/{len(entries)} ({time.time() - t0:.0f}s)")
                     except Exception as e:
                         idx = futures[f]
                         print(f"  FAILED entry {idx}: {e}")
@@ -279,7 +329,7 @@ def main():
                 sorted_indices = sorted(results.keys())
                 batch_num = 0
                 for start in range(0, len(sorted_indices), args.batch):
-                    chunk = sorted_indices[start:start + args.batch]
+                    chunk = sorted_indices[start : start + args.batch]
                     batch_num += 1
                     batch_parts = []
                     for j, i in enumerate(chunk):
@@ -289,7 +339,11 @@ def main():
                         batch_parts.extend(results[i])
                     out_path = os.path.join(mode_dir, f"{mode}_batch{batch_num:02d}.m4a")
                     concat_audio(batch_parts, out_path)
-                    first_entry = entries[chunk[0]]["hanzi"] if mode == "recognition" else entries[chunk[0]]["english"]
+                    first_entry = (
+                        entries[chunk[0]]["hanzi"]
+                        if mode == "recognition"
+                        else entries[chunk[0]]["english"]
+                    )
                     print(f"  → {out_path} ({len(chunk)} items, starts with: {first_entry})")
                 print(f"  {batch_num} batch files written")
             else:
@@ -299,8 +353,8 @@ def main():
                     # Use hanzi or english as filename depending on mode
                     label = e["hanzi"] if mode == "recognition" else e["english"]
                     # Sanitize filename
-                    safe = re.sub(r'[^\w\u4e00-\u9fff\u3400-\u4dbf.-]', '_', label)[:60]
-                    out_path = os.path.join(mode_dir, f"{idx+1:03d}_{safe}.m4a")
+                    safe = re.sub(r"[^\w\u4e00-\u9fff\u3400-\u4dbf.-]", "_", label)[:60]
+                    out_path = os.path.join(mode_dir, f"{idx + 1:03d}_{safe}.m4a")
                     os.rename(results[idx], out_path)
                 print(f"  {len(results)} individual files written to {mode_dir}/")
 

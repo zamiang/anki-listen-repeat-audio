@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+        with:
+          args: check
+      - uses: astral-sh/ruff-action@v3
+        with:
+          args: format --check
+
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check Python syntax
+        run: python -m py_compile generate-practice-audio.py
+
+  parse-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test file parser with sample input
+        run: |
+          python -c "
+          from importlib.machinery import SourceFileLoader
+          mod = SourceFileLoader('gen', 'generate-practice-audio.py').load_module()
+
+          sample = '''0001
+          Hello
+          nǐ hǎo
+          你好
+
+          0002
+          Thank you
+          xiè xiè
+          谢谢
+          '''
+          import tempfile, os
+          f = tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False)
+          lines = [l.strip() for l in sample.strip().split('\n')]
+          f.write('\n'.join(lines))
+          f.close()
+
+          entries = mod.parse_file(f.name)
+          os.remove(f.name)
+
+          assert len(entries) == 2, f'Expected 2 entries, got {len(entries)}'
+          assert entries[0]['hanzi'] == '你好'
+          assert entries[0]['english'] == 'Hello'
+          assert entries[1]['hanzi'] == '谢谢'
+          print('Parser test passed: 2 entries parsed correctly')
+          "
