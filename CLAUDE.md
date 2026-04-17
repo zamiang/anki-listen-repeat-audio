@@ -29,6 +29,12 @@ ruff format --check generate-practice-audio.py
 # Format fix
 ruff format generate-practice-audio.py
 
+# Run all tests (requires macOS + ffmpeg)
+pytest test_generate.py -v
+
+# Run parser tests only (no system deps)
+pytest test_generate.py -v -k "TestParseFile"
+
 # Generate audio from text file
 python3 generate-practice-audio.py --source file --file vocab.txt --batch 20
 

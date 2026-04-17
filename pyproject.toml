@@ -13,3 +13,6 @@ ignore = [
     "E501",   # line too long — handled by formatter where possible
     "UP032",  # f-string format spec — keep for readability
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
