@@ -73,15 +73,54 @@ def fetch_from_anki(query):
         hanzi = fields.get("Sentence", {}).get("value", "").strip()
         english = fields.get("English", {}).get("value", "").strip()
         pinyin = fields.get("Pinyin", {}).get("value", "").strip()
+        word = fields.get("Word", {}).get("value", "").strip()
         if hanzi and english:
             entries.append(
                 {
                     "hanzi": hanzi,
                     "english": english,
                     "pinyin": pinyin,
+                    "word": word,
                 }
             )
-    return entries
+    return group_by_anchor(entries)
+
+
+def group_by_anchor(entries):
+    """Reorder for word+examples study flow.
+
+    Anchors (entries with a non-empty 'word') keep their input order. Each
+    non-anchor whose 'hanzi' contains some anchor's 'word' is placed right after
+    that anchor; longer anchor words win ambiguous matches (so 大学生 beats 学生).
+    Non-anchors with no matching word appear at the end in input order.
+    """
+    anchors = [e for e in entries if e.get("word")]
+    non_anchors = [e for e in entries if not e.get("word")]
+    if not anchors:
+        return list(entries)
+
+    # Longest word first so 大学生 wins over 学生 for ambiguous orphans.
+    words_by_length = sorted({a["word"] for a in anchors}, key=len, reverse=True)
+
+    attached = {a["word"]: [] for a in anchors}
+    unattached = []
+    for na in non_anchors:
+        match = next((w for w in words_by_length if w in na["hanzi"]), None)
+        if match:
+            attached[match].append(na)
+        else:
+            unattached.append(na)
+
+    result = []
+    seen = set()
+    for a in anchors:
+        result.append(a)
+        w = a["word"]
+        if w not in seen:
+            result.extend(attached[w])
+            seen.add(w)
+    result.extend(unattached)
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════
