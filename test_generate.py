@@ -6,18 +6,22 @@ Audio tests require ffmpeg (skipped if not available).
 TTS tests require macOS say (skipped on other platforms).
 """
 
-import importlib.machinery
+import importlib.util
 import os
 import platform
 import subprocess
+import sys
 import tempfile
 
 import pytest
 
 # ── Load the module under test ──────────────────────────────────────
+# The filename contains hyphens, so a normal import won't work.
 
-loader = importlib.machinery.SourceFileLoader("gen", "generate-practice-audio.py")
-gen = loader.load_module()
+_spec = importlib.util.spec_from_file_location("gen", "generate-practice-audio.py")
+gen = importlib.util.module_from_spec(_spec)
+sys.modules["gen"] = gen
+_spec.loader.exec_module(gen)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ Entries can be output as individual files or batched into longer tracks (with 2s
 
 - **macOS** — uses the built-in `say` command for TTS
 - **ffmpeg** — for silence generation, audio concatenation, and AAC encoding
-- **Python 3.6+** — stdlib only, no pip dependencies
+- **Python 3.8+** — stdlib only, no pip dependencies
 - **Anki + AnkiConnect** (optional) — only needed if pulling entries from Anki
 
 Install ffmpeg:
@@ -32,13 +32,13 @@ If using Anki as a source, install the [AnkiConnect](https://ankiweb.net/shared/
 
 ```bash
 # From a text file — individual tracks
-python3 scripts/generate-practice-audio.py --source file --file my-vocab.txt
+python3 generate-practice-audio.py --source file --file my-vocab.txt
 
 # From Anki — 20-item batch tracks
-python3 scripts/generate-practice-audio.py --source anki --query 'deck:"My Deck"' --batch 20
+python3 generate-practice-audio.py --source anki --query 'deck:"My Deck"' --batch 20
 
 # Production mode only, 5s recall pause
-python3 scripts/generate-practice-audio.py --source file --file my-vocab.txt --mode production --pause 5
+python3 generate-practice-audio.py --source file --file my-vocab.txt --mode production --pause 5
 ```
 
 ## Options

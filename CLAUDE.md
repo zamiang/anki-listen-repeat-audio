@@ -8,14 +8,15 @@ Python script that generates dual-language listen-and-repeat audio tracks for la
 
 ```
 generate-practice-audio.py   # Main script (stdlib only, no pip deps)
-output/
-  full/                      # All cards from the deck (404 entries)
-    recognition/             # [Target lang] → pause → [English]
-    production/              # [English] → pause → [Target lang]
-  verbs/                     # Verb-focused subset (173 entries, spiral drill order)
-    recognition/
-    production/
+test_generate.py             # Pytest suite (28 tests)
+pyproject.toml               # Ruff + pytest config
+README.md                    # User-facing docs
+CLAUDE.md                    # This file
+.github/workflows/ci.yml     # Lint + test on push/PR
 ```
+
+Generated audio lands in `audio-practice/` by default (configurable via `--output`). The
+output directory is gitignored.
 
 ## Commands
 
