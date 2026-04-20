@@ -148,6 +148,81 @@ class TestParseFile:
 
 
 # ═══════════════════════════════════════════════════════════════════
+# GROUPING TESTS (anchor → example-sentences ordering)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestGroupByAnchor:
+    def _e(self, hanzi, english="", pinyin="", word=""):
+        return {"hanzi": hanzi, "english": english, "pinyin": pinyin, "word": word}
+
+    def test_empty_returns_empty(self):
+        assert gen.group_by_anchor([]) == []
+
+    def test_no_anchors_returns_unchanged(self):
+        entries = [self._e("我吃饭"), self._e("你好")]
+        assert gen.group_by_anchor(entries) == entries
+
+    def test_anchor_followed_by_its_orphans(self):
+        anchor = self._e("鸡肉饭很好吃", word="鸡肉")
+        orphan = self._e("我不吃鸡肉")
+        result = gen.group_by_anchor([orphan, anchor])
+        assert result == [anchor, orphan]
+
+    def test_anchor_order_preserved(self):
+        a1 = self._e("a", word="鸡肉")
+        a2 = self._e("b", word="电脑")
+        result = gen.group_by_anchor([a1, a2])
+        assert result == [a1, a2]
+
+    def test_multiple_anchors_each_get_their_orphans(self):
+        a1 = self._e("我吃鸡肉", word="鸡肉")
+        a2 = self._e("我的电脑", word="电脑")
+        o1 = self._e("今天吃鸡肉")
+        o2 = self._e("电脑坏了")
+        result = gen.group_by_anchor([a1, a2, o1, o2])
+        assert result == [a1, o1, a2, o2]
+
+    def test_orphan_with_no_matching_anchor_goes_last(self):
+        anchor = self._e("a", word="鸡肉")
+        orphan_matched = self._e("吃鸡肉")
+        orphan_unmatched = self._e("完全无关")
+        result = gen.group_by_anchor([anchor, orphan_matched, orphan_unmatched])
+        assert result == [anchor, orphan_matched, orphan_unmatched]
+
+    def test_longer_word_wins_for_ambiguous_orphan(self):
+        """An orphan sentence containing 大学生 should attach to 大学生 anchor,
+        not to the 学生 anchor, even though 学生 is a substring match."""
+        a_short = self._e("s", word="学生")
+        a_long = self._e("l", word="大学生")
+        orphan = self._e("我妹妹是大学生")
+        result = gen.group_by_anchor([a_short, a_long, orphan])
+        # Anchor order preserved; orphan attaches to longer match
+        assert result == [a_short, a_long, orphan]
+
+    def test_anchor_stays_as_anchor_even_if_contains_another_word(self):
+        """A note with word=鸡排 whose sentence contains 鸡肉 should remain the
+        鸡排 anchor — not get re-grouped under a 鸡肉 anchor."""
+        a_meat = self._e("鸡肉饭", word="鸡肉")
+        a_cutlet = self._e("鸡排 > 鸡肉", word="鸡排")  # contrived: sentence contains both
+        result = gen.group_by_anchor([a_meat, a_cutlet])
+        assert result == [a_meat, a_cutlet]
+
+    def test_empty_word_string_treated_as_no_word(self):
+        e1 = self._e("a", word="")
+        e2 = self._e("b", word="")
+        result = gen.group_by_anchor([e1, e2])
+        assert result == [e1, e2]
+
+    def test_missing_word_key_treated_as_no_word(self):
+        """Entries without a 'word' key shouldn't crash; they're non-anchors."""
+        anchor = {"hanzi": "a", "english": "", "pinyin": "", "word": "鸡肉"}
+        orphan = {"hanzi": "吃鸡肉", "english": "", "pinyin": ""}  # no 'word' key
+        result = gen.group_by_anchor([anchor, orphan])
+        assert result == [anchor, orphan]
+
+
+# ═══════════════════════════════════════════════════════════════════
 # SILENCE GENERATION TESTS (require ffmpeg)
 # ═══════════════════════════════════════════════════════════════════
 
