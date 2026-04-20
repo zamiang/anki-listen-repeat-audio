@@ -27,4 +27,4 @@ jobs:
             - Accuracy of any documentation changes against the actual code
 
             Post findings as review comments. Skip nitpicks; call out real issues.
-          claude_args: "--max-turns 5"
+          claude_args: "--max-turns 20"
