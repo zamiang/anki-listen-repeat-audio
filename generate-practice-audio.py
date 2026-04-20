@@ -7,11 +7,10 @@ Two modes per entry:
   Production:  [English] → pause → [Chinese]
 
 Usage:
-  python3 generate-practice-audio.py --source anki --query 'deck:"HSK 1::Claude" tag:batch5'
-  python3 generate-practice-audio.py --source file --file docs/chinese-words-phrases-to-add-april-12-2026.txt
+  python3 generate-practice-audio.py --source file --file vocab.txt
   python3 generate-practice-audio.py --source anki --query 'deck:"HSK 1::Claude"' --batch 20
 
-Requires: macOS say + afconvert, ffmpeg (for concatenation).
+Requires: macOS say, ffmpeg (for silence generation, concatenation, and AAC encoding).
 If using --source anki: Anki running with AnkiConnect (port 8765).
 """
 
