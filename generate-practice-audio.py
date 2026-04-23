@@ -34,7 +34,7 @@ ANKI_URL = "http://localhost:8765"
 ZH_VOICE = "Meijia (Premium)"  # Taiwan Mandarin
 EN_VOICE = "Zoe (Premium)"  # US English
 
-PAUSE_SECONDS = 3  # silence gap for recall
+PAUSE_SECONDS = 4  # silence gap for recall
 WORKERS = 4
 
 OUTPUT_DIR = "audio-practice"  # relative to working dir

@@ -8,8 +8,8 @@ Each vocabulary entry produces two track types:
 
 | Mode | Structure |
 |---|---|
-| **Recognition** | [Target language] → 3s pause → [English] |
-| **Production** | [English] → 3s pause → [Target language] |
+| **Recognition** | [Target language] → 4s pause → [English] |
+| **Production** | [English] → 4s pause → [Target language] |
 
 Entries can be output as individual files or batched into longer tracks (with 2s silence between items).
 
@@ -49,7 +49,7 @@ python3 generate-practice-audio.py --source file --file my-vocab.txt --mode prod
 | `--query` | — | AnkiConnect search query (required for `--source anki`) |
 | `--file` | — | Path to text file (required for `--source file`) |
 | `--mode` | `both` | `recognition`, `production`, or `both` |
-| `--pause` | `3` | Seconds of silence for recall |
+| `--pause` | `4` | Seconds of silence for recall |
 | `--batch` | `0` | Items per batch track (0 = one file per entry) |
 | `--output` | `audio-practice` | Output directory |
 
