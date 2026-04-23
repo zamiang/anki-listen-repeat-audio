@@ -71,6 +71,6 @@ Key constants at the top of the script: `ZH_VOICE`, `EN_VOICE`, `TTS_SAMPLE_RATE
 
 - Batch files: `{mode}_batch{NN}.m4a` (20 items per batch by default)
 - Individual files: `{NNN}_{label}.m4a`
-- 3s recall pause between prompt and answer
+- 4s recall pause between prompt and answer
 - 2s separator silence between batch items
 - AAC encoding at 128k with `+faststart` moov atom for streaming playback
