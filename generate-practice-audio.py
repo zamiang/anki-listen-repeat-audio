@@ -189,7 +189,11 @@ def generate_silence(duration_s, out_path):
 
 
 def concat_audio(parts, out_path):
-    """Concatenate WAV files using ffmpeg concat demuxer, encode to m4a."""
+    """Concatenate WAV files using ffmpeg concat demuxer, encode to m4a.
+
+    Output is resampled to 44.1 kHz — iTunes/Music can mishandle non-standard
+    AAC sample rates (the WAV inputs are 22050 Hz to match macOS `say`).
+    """
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         for p in parts:
             f.write(f"file '{p}'\n")
@@ -205,6 +209,8 @@ def concat_audio(parts, out_path):
                 "0",
                 "-i",
                 listfile,
+                "-ar",
+                "44100",
                 "-c:a",
                 "aac",
                 "-b:a",
