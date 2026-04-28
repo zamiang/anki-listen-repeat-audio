@@ -10,11 +10,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/ruff-action@v3
+      - uses: actions/checkout@v6
+      - uses: astral-sh/ruff-action@v4
         with:
           args: check
-      - uses: astral-sh/ruff-action@v3
+      - uses: astral-sh/ruff-action@v4
         with:
           args: format --check
 
@@ -22,8 +22,8 @@ jobs:
     name: "Tests: parser (ubuntu)"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install pytest
@@ -35,8 +35,8 @@ jobs:
     name: "Tests: full suite (macOS)"
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install dependencies
