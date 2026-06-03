@@ -8,7 +8,7 @@ Python script that generates dual-language listen-and-repeat audio tracks for la
 
 ```
 generate-practice-audio.py   # Main script (stdlib only, no pip deps)
-test_generate.py             # Pytest suite (28 tests)
+test_generate.py             # Pytest suite (42 tests)
 pyproject.toml               # Ruff + pytest config
 README.md                    # User-facing docs
 CLAUDE.md                    # This file

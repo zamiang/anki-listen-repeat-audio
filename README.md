@@ -52,18 +52,31 @@ python3 generate-practice-audio.py --source file --file my-vocab.txt --mode prod
 | `--pause` | `4` | Seconds of silence for recall |
 | `--batch` | `0` | Items per batch track (0 = one file per entry) |
 | `--output` | `audio-practice` | Output directory |
+| `--group` | off | (Anki only) Cluster example sentences under their word anchors. Off by default so audio follows Anki note order — see below. |
 
 ## Input formats
 
 ### Anki (via AnkiConnect)
 
-The script queries AnkiConnect for notes matching your search. It expects notes with these fields:
+The script queries AnkiConnect for notes matching your search. It expects the
+**`ChineseSimplified`** note type, with these fields:
 
 | Field | Purpose |
 |---|---|
 | `Sentence` | Target language text (used as prompt/answer) |
 | `English` | English translation |
 | `Pinyin` | Romanization (not used in audio, but read from notes) |
+| `Word` | Vocabulary word (only used by `--group`) |
+
+Notes lacking `Sentence`/`English` (i.e. a different note type) are skipped with a
+warning that lists the fields actually found; if a query matches **no** usable notes
+the script exits with an error rather than producing silent/empty output. Scope your
+query to the right note type, e.g. `--query 'note:ChineseSimplified deck:"My Deck"'`.
+
+By default, audio follows the note order Anki returns (sorted by note id), so tracks
+line up with study order. Pass `--group` to instead cluster each example sentence
+after the word anchor it contains — note that this matches by substring, so common
+characters (了, 吗, …) can pull in unrelated sentences.
 
 Anki must be running with AnkiConnect listening on `http://localhost:8765`.
 
