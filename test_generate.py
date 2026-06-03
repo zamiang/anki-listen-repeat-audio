@@ -223,6 +223,53 @@ class TestGroupByAnchor:
 
 
 # ═══════════════════════════════════════════════════════════════════
+# ANKI FIELD MAPPING TESTS (no Anki required — pure function)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestNotesToEntries:
+    def _note(self, **fields):
+        """Build a fake AnkiConnect notesInfo entry from field=value kwargs."""
+        return {"fields": {k: {"value": v} for k, v in fields.items()}}
+
+    def test_maps_chinese_simplified_fields(self):
+        notes = [
+            self._note(Sentence="我不吃肉", English="I don't eat meat", Pinyin="Wǒ...", Word="肉")
+        ]
+        entries, skipped = gen.notes_to_entries(notes)
+        assert skipped == 0
+        assert entries == [
+            {"hanzi": "我不吃肉", "english": "I don't eat meat", "pinyin": "Wǒ...", "word": "肉"}
+        ]
+
+    def test_skips_notes_missing_required_fields_and_counts_them(self):
+        """Notes from the wrong note type (no Sentence/English) are skipped, not crashed on."""
+        notes = [
+            self._note(Sentence="你好", English="Hello", Pinyin="nǐ hǎo", Word=""),
+            self._note(Simplified="的", Meaning="of", Pinyin="de"),  # wrong note type
+            self._note(Sentence="谢谢", English="", Pinyin="xiè xiè"),  # missing english
+        ]
+        entries, skipped = gen.notes_to_entries(notes)
+        assert len(entries) == 1
+        assert entries[0]["hanzi"] == "你好"
+        assert skipped == 2
+
+    def test_missing_word_field_becomes_empty_string(self):
+        notes = [self._note(Sentence="你好", English="Hello", Pinyin="nǐ hǎo")]
+        entries, _ = gen.notes_to_entries(notes)
+        assert entries[0]["word"] == ""
+
+    def test_strips_whitespace(self):
+        notes = [
+            self._note(Sentence="  你好  ", English="  Hello  ", Pinyin="  x  ", Word="  好  ")
+        ]
+        entries, _ = gen.notes_to_entries(notes)
+        assert entries[0]["hanzi"] == "你好"
+        assert entries[0]["english"] == "Hello"
+        assert entries[0]["word"] == "好"
+
+
+# ═══════════════════════════════════════════════════════════════════
 # SILENCE GENERATION TESTS (require ffmpeg)
 # ═══════════════════════════════════════════════════════════════════
 

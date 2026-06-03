@@ -61,13 +61,15 @@ def ac(action, **params):
     return resp["result"]
 
 
-def fetch_from_anki(query):
-    note_ids = ac("findNotes", query=query)
-    if not note_ids:
-        print(f"No notes found for query: {query}")
-        sys.exit(1)
-    notes_info = ac("notesInfo", notes=note_ids)
+def notes_to_entries(notes_info):
+    """Map AnkiConnect notesInfo results to entries (ChineseSimplified note type).
+
+    Returns (entries, skipped). A note is skipped when it lacks the required
+    'Sentence' and 'English' fields — e.g. a query that matched a different note
+    type. The caller is responsible for warning the user about skips.
+    """
     entries = []
+    skipped = 0
     for note in notes_info:
         fields = note["fields"]
         hanzi = fields.get("Sentence", {}).get("value", "").strip()
@@ -83,7 +85,42 @@ def fetch_from_anki(query):
                     "word": word,
                 }
             )
-    return group_by_anchor(entries)
+        else:
+            skipped += 1
+    return entries, skipped
+
+
+def fetch_from_anki(query, group=False):
+    note_ids = ac("findNotes", query=query)
+    if not note_ids:
+        print(f"No notes found for query: {query}")
+        sys.exit(1)
+    # findNotes returns an unordered set; sort by note id (creation order) so a
+    # given query always produces the same track sequence run-to-run.
+    notes_info = ac("notesInfo", notes=sorted(note_ids))
+    entries, skipped = notes_to_entries(notes_info)
+
+    if skipped:
+        found_fields = sorted(notes_info[0]["fields"].keys()) if notes_info else []
+        print(
+            f"WARNING: skipped {skipped}/{len(notes_info)} notes lacking 'Sentence'/'English' "
+            "fields (wrong note type?)."
+        )
+        print(f"  Fields on first matched note: {found_fields}")
+        print(
+            "  This script expects the 'ChineseSimplified' note type "
+            "(fields: Sentence, Word, Pinyin, English)."
+        )
+    if not entries:
+        print(
+            "ERROR: no matched notes had usable Sentence + English fields. "
+            "Narrow your --query to ChineseSimplified notes (e.g. add 'note:ChineseSimplified')."
+        )
+        sys.exit(1)
+
+    # Grouping reorders sentences under word anchors via substring matching, which
+    # scrambles study order and mis-clusters common characters — off by default.
+    return group_by_anchor(entries) if group else entries
 
 
 def group_by_anchor(entries):
@@ -304,6 +341,12 @@ def main():
     parser.add_argument(
         "--output", default=OUTPUT_DIR, help=f"Output directory (default: {OUTPUT_DIR})"
     )
+    parser.add_argument(
+        "--group",
+        action="store_true",
+        help="(Anki only) Cluster example sentences under their word anchors. "
+        "Default: preserve Anki note order so audio lines up with study order.",
+    )
     args = parser.parse_args()
 
     pause = args.pause
@@ -321,7 +364,7 @@ def main():
             print("ERROR: --query required when --source is anki")
             sys.exit(1)
         print(f"Fetching cards from Anki: {args.query}")
-        entries = fetch_from_anki(args.query)
+        entries = fetch_from_anki(args.query, group=args.group)
     else:
         if not args.file:
             print("ERROR: --file required when --source is file")
