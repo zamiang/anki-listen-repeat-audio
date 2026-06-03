@@ -39,18 +39,12 @@ HANZI_SELECTORS = {
 }
 
 FONT_FACE = (
-    MARKER + "\n"
-    "@font-face {\n"
-    '  font-family: "LXGW WenKai";\n'
-    f'  src: url("{FONT_FILE}");\n'
-    "}\n"
+    MARKER + f'\n@font-face {{\n  font-family: "LXGW WenKai";\n  src: url("{FONT_FILE}");\n}}\n'
 )
 
 # Matches a previously-injected block: any of our marker comments (the wording
 # has varied across versions) through the next "}". Keyed on the stable prefix.
-INJECTED_BLOCK = re.compile(
-    r"\n?/\* lxgw-wenkai \(kaishu\) brush font.*?\}\n?", re.DOTALL
-)
+INJECTED_BLOCK = re.compile(r"\n?/\* lxgw-wenkai \(kaishu\) brush font.*?\}\n?", re.DOTALL)
 
 
 def ac(action, **params):
@@ -80,12 +74,7 @@ def apply():
             continue
         css = ac("modelStyling", modelName=model)["css"]
         css = INJECTED_BLOCK.sub("", css)  # remove any prior injection
-        override = (
-            "\n" + MARKER + "\n"
-            f"{selectors} {{\n"
-            f"  font-family: {STACK} !important;\n"
-            "}\n"
-        )
+        override = "\n" + MARKER + f"\n{selectors} {{\n  font-family: {STACK} !important;\n}}\n"
         ac("updateModelStyling", model={"name": model, "css": FONT_FACE + css + override})
         print(f"  applied -> {model}  [{selectors}]")
 
