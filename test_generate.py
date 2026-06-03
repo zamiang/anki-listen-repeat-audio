@@ -233,7 +233,9 @@ class TestNotesToEntries:
         return {"fields": {k: {"value": v} for k, v in fields.items()}}
 
     def test_maps_chinese_simplified_fields(self):
-        notes = [self._note(Sentence="我不吃肉", English="I don't eat meat", Pinyin="Wǒ...", Word="肉")]
+        notes = [
+            self._note(Sentence="我不吃肉", English="I don't eat meat", Pinyin="Wǒ...", Word="肉")
+        ]
         entries, skipped = gen.notes_to_entries(notes)
         assert skipped == 0
         assert entries == [
@@ -258,7 +260,9 @@ class TestNotesToEntries:
         assert entries[0]["word"] == ""
 
     def test_strips_whitespace(self):
-        notes = [self._note(Sentence="  你好  ", English="  Hello  ", Pinyin="  x  ", Word="  好  ")]
+        notes = [
+            self._note(Sentence="  你好  ", English="  Hello  ", Pinyin="  x  ", Word="  好  ")
+        ]
         entries, _ = gen.notes_to_entries(notes)
         assert entries[0]["hanzi"] == "你好"
         assert entries[0]["english"] == "Hello"
