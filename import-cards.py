@@ -29,11 +29,11 @@ ANKI_URL = "http://localhost:8765"
 DECK = "HSK 1::Claude"
 MODEL = "ChineseSimplified"
 
-VOICE = "Meijia"           # Taiwan Mandarin (zh_TW)
-WORKERS = 4                # parallel TTS threads
+VOICE = "Meijia"  # Taiwan Mandarin (zh_TW)
+WORKERS = 4  # parallel TTS threads
 FILENAME_PREFIX = "claude"  # media: claude_batch{N}_{idx}.m4a
 
-BATCH = 7                  # ← increment this each time you run a new file
+BATCH = 7  # ← increment this each time you run a new file
 
 HANZI_CONVERSIONS = {
     "哪儿": "哪里",
@@ -42,8 +42,12 @@ HANZI_CONVERSIONS = {
 }
 
 PINYIN_CONVERSIONS = {
-    "nǎr": "nǎlǐ", "zhèr": "zhèlǐ", "nàr": "nàlǐ",
-    "Nǎr": "Nǎlǐ", "Zhèr": "Zhèlǐ", "Nàr": "Nàlǐ",
+    "nǎr": "nǎlǐ",
+    "zhèr": "zhèlǐ",
+    "nàr": "nàlǐ",
+    "Nǎr": "Nǎlǐ",
+    "Zhèr": "Zhèlǐ",
+    "Nàr": "Nàlǐ",
 }
 
 GLOBAL_TAGS = ["claude"]
@@ -63,13 +67,52 @@ KNOWN_WORDS_DEFAULT_OUTPUT = "migaku_known_words.txt"
 # Theme detection: (keywords_in_english, tag_name)
 # First match wins. Checked against lowercased English field.
 THEME_RULES = [
-    (["month", "week", "monday", "tuesday", "wednesday", "thursday",
-      "friday", "saturday", "sunday", "april", "may", "june", "july",
-      "august", "september", "october", "november", "december",
-      "january", "february", "march"], "calendar"),
+    (
+        [
+            "month",
+            "week",
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
+            "january",
+            "february",
+            "march",
+        ],
+        "calendar",
+    ),
     (["hour", "minute", "second", "year", "day"], "time"),
-    (["big", "small", "hot", "cold", "young", "old", "tall", "short",
-      "heavy", "light", "fast", "slow", "however", "but"], "adjectives"),
+    (
+        [
+            "big",
+            "small",
+            "hot",
+            "cold",
+            "young",
+            "old",
+            "tall",
+            "short",
+            "heavy",
+            "light",
+            "fast",
+            "slow",
+            "however",
+            "but",
+        ],
+        "adjectives",
+    ),
     (["like", "enjoy", "love", "prefer"], "preferences"),
     (["right", "correct"], "confirmation"),
     (["child", "children", "kid"], "family"),
@@ -80,6 +123,7 @@ THEME_RULES = [
 # ANKI CONNECT HELPER
 # ══════════════════════════════════════════════════════════════════════
 
+
 def ac(action, **params):
     req = urllib.request.Request(
         ANKI_URL,
@@ -89,7 +133,7 @@ def ac(action, **params):
         resp = json.loads(urllib.request.urlopen(req, timeout=60).read())
     except Exception as e:
         print(f"ERROR: Cannot reach AnkiConnect at {ANKI_URL}")
-        print(f"  Make sure Anki is running with AnkiConnect installed.")
+        print("  Make sure Anki is running with AnkiConnect installed.")
         print(f"  ({e})")
         sys.exit(1)
     if resp.get("error"):
@@ -111,6 +155,7 @@ def media_filename(sentence):
 # STEP 1: PARSE
 # ══════════════════════════════════════════════════════════════════════
 
+
 def parse_file(path):
     with open(path) as f:
         text = f.read()
@@ -118,20 +163,23 @@ def parse_file(path):
     entries = []
     blocks = re.split(r"\n(?=\d{4}\n)", text.strip())
     for block in blocks:
-        lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
+        lines = [line.strip() for line in block.strip().split("\n") if line.strip()]
         if len(lines) >= 4 and re.match(r"^\d{4}$", lines[0]):
-            entries.append({
-                "id": lines[0],
-                "english": lines[1],
-                "pinyin": lines[2],
-                "hanzi": lines[3],
-            })
+            entries.append(
+                {
+                    "id": lines[0],
+                    "english": lines[1],
+                    "pinyin": lines[2],
+                    "hanzi": lines[3],
+                }
+            )
     return entries
 
 
 # ══════════════════════════════════════════════════════════════════════
 # STEP 2: CONVERT 儿→里
 # ══════════════════════════════════════════════════════════════════════
+
 
 def convert_er(entries):
     count = 0
@@ -149,6 +197,7 @@ def convert_er(entries):
 # ══════════════════════════════════════════════════════════════════════
 # STEP 3: CLASSIFY (word vs sentence, theme tags)
 # ══════════════════════════════════════════════════════════════════════
+
 
 def is_cjk(c):
     cp = ord(c)
@@ -182,17 +231,20 @@ def classify(entry):
 # STEP 4: GENERATE AUDIO (parallel)
 # ══════════════════════════════════════════════════════════════════════
 
+
 def gen_audio(idx_sentence):
     idx, sentence = idx_sentence
     aiff = f"/tmp/import_{idx:04d}.aiff"
     m4a = f"/tmp/import_{idx:04d}.m4a"
     subprocess.run(
         ["say", "-v", VOICE, "-o", aiff, sentence],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     subprocess.run(
         ["afconvert", aiff, m4a, "-f", "m4af", "-d", "aac"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     os.remove(aiff)
     with open(m4a, "rb") as f:
@@ -205,18 +257,15 @@ def generate_all_audio(cards):
     audio = {}
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        futures = {
-            ex.submit(gen_audio, (i, c["sentence"])): i
-            for i, c in enumerate(cards)
-        }
+        futures = {ex.submit(gen_audio, (i, c["sentence"])): i for i, c in enumerate(cards)}
         done = 0
         for f in as_completed(futures):
             idx, b64 = f.result()
             audio[idx] = b64
-            done += 1
+            done += 1  # noqa: SIM113
             if done % 40 == 0:
-                print(f"  audio: {done}/{len(cards)} ({time.time()-t0:.0f}s)")
-    print(f"  audio: {len(audio)}/{len(cards)} done ({time.time()-t0:.0f}s)")
+                print(f"  audio: {done}/{len(cards)} ({time.time() - t0:.0f}s)")
+    print(f"  audio: {len(audio)}/{len(cards)} done ({time.time() - t0:.0f}s)")
     return audio
 
 
@@ -224,28 +273,32 @@ def generate_all_audio(cards):
 # STEP 5-6: UPLOAD + CREATE + SYNC
 # ══════════════════════════════════════════════════════════════════════
 
+
 def upload_and_create(cards, audio):
     batch_tag = f"batch{BATCH}"
     created, skipped, failed = 0, 0, []
 
     t0 = time.time()
     for i, c in enumerate(cards):
-        filename = f"{FILENAME_PREFIX}_batch{BATCH}_{i+1:03d}.m4a"
+        filename = f"{FILENAME_PREFIX}_batch{BATCH}_{i + 1:03d}.m4a"
         try:
             ac("storeMediaFile", filename=filename, data=audio[i])
-            ac("addNote", note={
-                "deckName": DECK,
-                "modelName": MODEL,
-                "fields": {
-                    "Sentence": c["sentence"],
-                    "Word": c["word"],
-                    "Pinyin": c["pinyin"],
-                    "English": c["english"],
-                    "Notes": c["notes"],
-                    "Audio": f"[sound:{filename}]",
+            ac(
+                "addNote",
+                note={
+                    "deckName": DECK,
+                    "modelName": MODEL,
+                    "fields": {
+                        "Sentence": c["sentence"],
+                        "Word": c["word"],
+                        "Pinyin": c["pinyin"],
+                        "English": c["english"],
+                        "Notes": c["notes"],
+                        "Audio": f"[sound:{filename}]",
+                    },
+                    "tags": GLOBAL_TAGS + [batch_tag] + c["tags"],
                 },
-                "tags": GLOBAL_TAGS + [batch_tag] + c["tags"],
-            })
+            )
             created += 1
         except Exception as e:
             err = str(e)
@@ -254,7 +307,9 @@ def upload_and_create(cards, audio):
             else:
                 failed.append((c["sentence"], err))
         if (created + skipped + len(failed)) % 40 == 0:
-            print(f"  notes: {created + skipped + len(failed)}/{len(cards)} ({time.time()-t0:.0f}s)")
+            print(
+                f"  notes: {created + skipped + len(failed)}/{len(cards)} ({time.time() - t0:.0f}s)"
+            )
 
     return created, skipped, failed
 
@@ -272,6 +327,7 @@ def sync():
 # ══════════════════════════════════════════════════════════════════════
 # EXPORT KNOWN WORDS (for Migaku Memory)
 # ══════════════════════════════════════════════════════════════════════
+
 
 def _clean_word(raw):
     """Strip HTML, normalize 儿→里, keep CJK only. Returns "" if not a vocab word."""
@@ -323,12 +379,15 @@ def export_known_words(output_path):
     with open(output_path, "w") as f:
         f.write("\n".join(sorted_words) + "\n")
     print(f"\nWrote {len(sorted_words)} unique known words → {output_path}")
-    print("Import in Migaku: Memory → Settings → Known Words → Import (language: Chinese Simplified)")
+    print(
+        "Import in Migaku: Memory → Settings → Known Words → Import (language: Chinese Simplified)"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════
 # REGENERATE AUDIO (for existing notes — e.g. after voice library update)
 # ══════════════════════════════════════════════════════════════════════
+
 
 def regenerate_audio_for_existing(deck=DECK, tag="claude"):
     query = f'deck:"{deck}" tag:{tag}'
@@ -350,15 +409,17 @@ def regenerate_audio_for_existing(deck=DECK, tag="claude"):
             continue
         targets.append({"sentence": sentence, "filename": m.group(1)})
 
-    print(f"Found {len(targets)} notes with audio to regenerate"
-          f" ({skipped_no_audio} skipped — no Sentence or no [sound:] reference)")
+    print(
+        f"Found {len(targets)} notes with audio to regenerate"
+        f" ({skipped_no_audio} skipped — no Sentence or no [sound:] reference)"
+    )
     if not targets:
         return
 
     print(f"Generating {len(targets)} audio files ({VOICE}, {WORKERS} workers)...")
     audio = generate_all_audio(targets)
 
-    print(f"Overwriting media files in Anki...")
+    print("Overwriting media files in Anki...")
     t0 = time.time()
     uploaded, failed = 0, []
     for i, t in enumerate(targets):
@@ -371,7 +432,7 @@ def regenerate_audio_for_existing(deck=DECK, tag="claude"):
         except Exception as e:
             failed.append((t["filename"], str(e)))
         if (uploaded + len(failed)) % 40 == 0:
-            print(f"  media: {uploaded + len(failed)}/{len(targets)} ({time.time()-t0:.0f}s)")
+            print(f"  media: {uploaded + len(failed)}/{len(targets)} ({time.time() - t0:.0f}s)")
 
     sync_status = sync()
     print(f"\nDone: {uploaded} regenerated, {len(failed)} failed. Sync: {sync_status}")
@@ -384,6 +445,7 @@ def regenerate_audio_for_existing(deck=DECK, tag="claude"):
 # ══════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
+
 
 def main():
     # Export mode
@@ -431,14 +493,16 @@ def main():
     cards = []
     for e in entries:
         word, tag = classify(e)
-        cards.append({
-            "word": word,
-            "sentence": e["hanzi"],
-            "pinyin": e["pinyin"],
-            "english": e["english"],
-            "notes": "",
-            "tags": [tag],
-        })
+        cards.append(
+            {
+                "word": word,
+                "sentence": e["hanzi"],
+                "pinyin": e["pinyin"],
+                "english": e["english"],
+                "notes": "",
+                "tags": [tag],
+            }
+        )
     vocab_count = sum(1 for c in cards if c["word"])
     print(f"Classified: {vocab_count} vocab, {len(cards) - vocab_count} sentences")
 
@@ -454,7 +518,9 @@ def main():
     sync_status = sync()
 
     # Step 7: Summary
-    print(f"\nDone: {created} created, {skipped} duplicates skipped, {len(failed)} failed. Sync: {sync_status}")
+    print(
+        f"\nDone: {created} created, {skipped} duplicates skipped, {len(failed)} failed. Sync: {sync_status}"
+    )
     if failed:
         for sentence, err in failed[:10]:
             print(f"  FAILED: {sentence} — {err}")
