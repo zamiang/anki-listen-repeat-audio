@@ -305,13 +305,12 @@ def generate_all_audio(cards):
 # ══════════════════════════════════════════════════════════════════════
 
 
-def upload_and_create(cards, audio):
-    batch_tag = f"batch{BATCH}"
+def upload_and_create(cards, audio, src_tag):
     created, skipped, failed = 0, 0, []
 
     t0 = time.time()
     for i, c in enumerate(cards):
-        filename = f"{FILENAME_PREFIX}_batch{BATCH}_{i + 1:03d}.m4a"
+        filename = media_filename(c["sentence"])
         try:
             ac("storeMediaFile", filename=filename, data=audio[i])
             ac(
@@ -327,7 +326,7 @@ def upload_and_create(cards, audio):
                         "Notes": c["notes"],
                         "Audio": f"[sound:{filename}]",
                     },
-                    "tags": GLOBAL_TAGS + [batch_tag] + c["tags"],
+                    "tags": GLOBAL_TAGS + [src_tag] + c["tags"],
                 },
             )
             created += 1
@@ -542,8 +541,9 @@ def main():
     audio = generate_all_audio(cards)
 
     # Step 5: Upload + Create
-    print(f"Uploading to {DECK} as batch{BATCH}...")
-    created, skipped, failed = upload_and_create(cards, audio)
+    src_tag = source_tag(filepath)
+    print(f"Uploading to {DECK} as {src_tag}...")
+    created, skipped, failed = upload_and_create(cards, audio, src_tag)
 
     # Step 6: Sync
     sync_status = sync()
