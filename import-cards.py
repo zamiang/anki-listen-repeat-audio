@@ -6,6 +6,7 @@ Usage:
     python3 import-cards.py <file.txt>                    # import a batch
     python3 import-cards.py --export-known-words [out]    # dump hanzi for Migaku
     python3 import-cards.py --regenerate-audio            # re-TTS all claude-tagged notes
+    python3 import-cards.py --audit                       # report audio↔text mismatches
 
 Requires: Anki running with AnkiConnect (port 8765), macOS say + afconvert.
 """
@@ -31,9 +32,7 @@ MODEL = "ChineseSimplified"
 
 VOICE = "Meijia"  # Taiwan Mandarin (zh_TW)
 WORKERS = 4  # parallel TTS threads
-FILENAME_PREFIX = "claude"  # media: claude_batch{N}_{idx}.m4a
-
-BATCH = 7  # ← increment this each time you run a new file
+FILENAME_PREFIX = "claude"  # media: claude_<sha1(sentence)[:10]>.m4a
 
 HANZI_CONVERSIONS = {
     "哪儿": "哪里",
@@ -144,7 +143,7 @@ def ac(action, **params):
 def media_filename(sentence):
     """Content-addressed media name: identical text → identical file, never collides.
 
-    Replaces the old positional claude_batch{BATCH}_{idx}.m4a scheme, whose
+    Replaces the old positional claude_batch{N}_{idx}.m4a scheme, whose
     uniqueness depended on hand-bumping a global counter.
     """
     digest = hashlib.sha1(sentence.encode("utf-8")).hexdigest()[:10]
@@ -154,7 +153,7 @@ def media_filename(sentence):
 def source_tag(path):
     """Derive a 'src:<stem>' Anki tag from the input filename.
 
-    Replaces the old batch{BATCH} tag (also keyed off the hand-edited global).
+    Replaces the old batchN tag (also keyed off a hand-edited global counter).
     Whitespace is collapsed to hyphens because Anki tags cannot contain spaces.
     """
     stem = os.path.splitext(os.path.basename(path))[0]
