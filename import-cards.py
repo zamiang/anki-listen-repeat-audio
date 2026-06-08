@@ -1,0 +1,466 @@
+#!/usr/bin/env python3
+"""
+Import Chinese flashcards from a structured text file into Anki via AnkiConnect.
+
+Usage:
+    python3 import-cards.py <file.txt>                    # import a batch
+    python3 import-cards.py --export-known-words [out]    # dump hanzi for Migaku
+    python3 import-cards.py --regenerate-audio            # re-TTS all claude-tagged notes
+
+Requires: Anki running with AnkiConnect (port 8765), macOS say + afconvert.
+"""
+
+import base64
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# ══════════════════════════════════════════════════════════════════════
+# CONFIGURATION — edit these as needed
+# ══════════════════════════════════════════════════════════════════════
+
+ANKI_URL = "http://localhost:8765"
+DECK = "HSK 1::Claude"
+MODEL = "ChineseSimplified"
+
+VOICE = "Meijia"           # Taiwan Mandarin (zh_TW)
+WORKERS = 4                # parallel TTS threads
+FILENAME_PREFIX = "claude"  # media: claude_batch{N}_{idx}.m4a
+
+BATCH = 7                  # ← increment this each time you run a new file
+
+HANZI_CONVERSIONS = {
+    "哪儿": "哪里",
+    "这儿": "这里",
+    "那儿": "那里",
+}
+
+PINYIN_CONVERSIONS = {
+    "nǎr": "nǎlǐ", "zhèr": "zhèlǐ", "nàr": "nàlǐ",
+    "Nǎr": "Nǎlǐ", "Zhèr": "Zhèlǐ", "Nàr": "Nàlǐ",
+}
+
+GLOBAL_TAGS = ["claude"]
+
+# Decks to scan for the Migaku known-words export.
+# Spoonfed is intentionally omitted: its Word field is empty (sentence-only notes),
+# and Migaku's importer expects one word per line, not phrases.
+# xiehanzi: only the ::Meaning subdeck — Write/Audio/Pinyin are duplicate notes of the same chars.
+KNOWN_WORDS_DECKS = [
+    "HSK 1::Claude",
+    "Anki-xiehanzi - New HSK (2025) with sentences::HSK 1::Meaning",
+]
+# Field names to try (in order) for the vocab/word value on each note.
+KNOWN_WORDS_FIELDS = ["Word", "Simplified", "Hanzi", "Character", "Front"]
+KNOWN_WORDS_DEFAULT_OUTPUT = "migaku_known_words.txt"
+
+# Theme detection: (keywords_in_english, tag_name)
+# First match wins. Checked against lowercased English field.
+THEME_RULES = [
+    (["month", "week", "monday", "tuesday", "wednesday", "thursday",
+      "friday", "saturday", "sunday", "april", "may", "june", "july",
+      "august", "september", "october", "november", "december",
+      "january", "february", "march"], "calendar"),
+    (["hour", "minute", "second", "year", "day"], "time"),
+    (["big", "small", "hot", "cold", "young", "old", "tall", "short",
+      "heavy", "light", "fast", "slow", "however", "but"], "adjectives"),
+    (["like", "enjoy", "love", "prefer"], "preferences"),
+    (["right", "correct"], "confirmation"),
+    (["child", "children", "kid"], "family"),
+    (["understand", "know"], "comprehension"),
+]
+
+# ══════════════════════════════════════════════════════════════════════
+# ANKI CONNECT HELPER
+# ══════════════════════════════════════════════════════════════════════
+
+def ac(action, **params):
+    req = urllib.request.Request(
+        ANKI_URL,
+        data=json.dumps({"action": action, "version": 6, "params": params}).encode(),
+    )
+    try:
+        resp = json.loads(urllib.request.urlopen(req, timeout=60).read())
+    except Exception as e:
+        print(f"ERROR: Cannot reach AnkiConnect at {ANKI_URL}")
+        print(f"  Make sure Anki is running with AnkiConnect installed.")
+        print(f"  ({e})")
+        sys.exit(1)
+    if resp.get("error"):
+        raise Exception(f"{action}: {resp['error']}")
+    return resp["result"]
+
+
+def media_filename(sentence):
+    """Content-addressed media name: identical text → identical file, never collides.
+
+    Replaces the old positional claude_batch{BATCH}_{idx}.m4a scheme, whose
+    uniqueness depended on hand-bumping a global counter.
+    """
+    digest = hashlib.sha1(sentence.encode("utf-8")).hexdigest()[:10]
+    return f"{FILENAME_PREFIX}_{digest}.m4a"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# STEP 1: PARSE
+# ══════════════════════════════════════════════════════════════════════
+
+def parse_file(path):
+    with open(path) as f:
+        text = f.read()
+
+    entries = []
+    blocks = re.split(r"\n(?=\d{4}\n)", text.strip())
+    for block in blocks:
+        lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
+        if len(lines) >= 4 and re.match(r"^\d{4}$", lines[0]):
+            entries.append({
+                "id": lines[0],
+                "english": lines[1],
+                "pinyin": lines[2],
+                "hanzi": lines[3],
+            })
+    return entries
+
+
+# ══════════════════════════════════════════════════════════════════════
+# STEP 2: CONVERT 儿→里
+# ══════════════════════════════════════════════════════════════════════
+
+def convert_er(entries):
+    count = 0
+    for e in entries:
+        orig = e["hanzi"]
+        for old, new in HANZI_CONVERSIONS.items():
+            e["hanzi"] = e["hanzi"].replace(old, new)
+        for old, new in PINYIN_CONVERSIONS.items():
+            e["pinyin"] = e["pinyin"].replace(old, new)
+        if e["hanzi"] != orig:
+            count += 1
+    return count
+
+
+# ══════════════════════════════════════════════════════════════════════
+# STEP 3: CLASSIFY (word vs sentence, theme tags)
+# ══════════════════════════════════════════════════════════════════════
+
+def is_cjk(c):
+    cp = ord(c)
+    return 0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF
+
+
+def classify(entry):
+    h = entry["hanzi"]
+    eng = entry["english"].lower()
+    cjk = [c for c in h if is_cjk(c)]
+    punctuation = "。？！，"
+
+    # Word field: bare vocab (≤2 CJK, no punctuation)
+    is_bare = len(cjk) <= 2 and not any(p in h for p in punctuation)
+    word = h if is_bare else ""
+
+    # Theme tag: first matching rule wins
+    tag = "sentence"  # default
+    for keywords, theme in THEME_RULES:
+        if any(kw in eng for kw in keywords):
+            tag = theme
+            break
+    # Fallback: short entries without a theme match → "numbers" if all digits/CJK
+    if tag == "sentence" and is_bare and len(cjk) <= 3:
+        tag = "numbers"
+
+    return word, tag
+
+
+# ══════════════════════════════════════════════════════════════════════
+# STEP 4: GENERATE AUDIO (parallel)
+# ══════════════════════════════════════════════════════════════════════
+
+def gen_audio(idx_sentence):
+    idx, sentence = idx_sentence
+    aiff = f"/tmp/import_{idx:04d}.aiff"
+    m4a = f"/tmp/import_{idx:04d}.m4a"
+    subprocess.run(
+        ["say", "-v", VOICE, "-o", aiff, sentence],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["afconvert", aiff, m4a, "-f", "m4af", "-d", "aac"],
+        check=True, capture_output=True,
+    )
+    os.remove(aiff)
+    with open(m4a, "rb") as f:
+        data = f.read()
+    os.remove(m4a)
+    return idx, base64.b64encode(data).decode()
+
+
+def generate_all_audio(cards):
+    audio = {}
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        futures = {
+            ex.submit(gen_audio, (i, c["sentence"])): i
+            for i, c in enumerate(cards)
+        }
+        done = 0
+        for f in as_completed(futures):
+            idx, b64 = f.result()
+            audio[idx] = b64
+            done += 1
+            if done % 40 == 0:
+                print(f"  audio: {done}/{len(cards)} ({time.time()-t0:.0f}s)")
+    print(f"  audio: {len(audio)}/{len(cards)} done ({time.time()-t0:.0f}s)")
+    return audio
+
+
+# ══════════════════════════════════════════════════════════════════════
+# STEP 5-6: UPLOAD + CREATE + SYNC
+# ══════════════════════════════════════════════════════════════════════
+
+def upload_and_create(cards, audio):
+    batch_tag = f"batch{BATCH}"
+    created, skipped, failed = 0, 0, []
+
+    t0 = time.time()
+    for i, c in enumerate(cards):
+        filename = f"{FILENAME_PREFIX}_batch{BATCH}_{i+1:03d}.m4a"
+        try:
+            ac("storeMediaFile", filename=filename, data=audio[i])
+            ac("addNote", note={
+                "deckName": DECK,
+                "modelName": MODEL,
+                "fields": {
+                    "Sentence": c["sentence"],
+                    "Word": c["word"],
+                    "Pinyin": c["pinyin"],
+                    "English": c["english"],
+                    "Notes": c["notes"],
+                    "Audio": f"[sound:{filename}]",
+                },
+                "tags": GLOBAL_TAGS + [batch_tag] + c["tags"],
+            })
+            created += 1
+        except Exception as e:
+            err = str(e)
+            if "duplicate" in err.lower():
+                skipped += 1
+            else:
+                failed.append((c["sentence"], err))
+        if (created + skipped + len(failed)) % 40 == 0:
+            print(f"  notes: {created + skipped + len(failed)}/{len(cards)} ({time.time()-t0:.0f}s)")
+
+    return created, skipped, failed
+
+
+def sync():
+    try:
+        ac("sync")
+        return "OK"
+    except Exception as e:
+        if "status 2" in str(e).lower() or "Status 2" in str(e):
+            return "FULL_SYNC_NEEDED"
+        return f"ERROR: {e}"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# EXPORT KNOWN WORDS (for Migaku Memory)
+# ══════════════════════════════════════════════════════════════════════
+
+def _clean_word(raw):
+    """Strip HTML, normalize 儿→里, keep CJK only. Returns "" if not a vocab word."""
+    if not raw:
+        return ""
+    s = re.sub(r"<[^>]+>", "", raw).strip()
+    # Reject sentences (any punctuation)
+    if any(p in s for p in "。？！，,.?!;:、；："):
+        return ""
+    for old, new in HANZI_CONVERSIONS.items():
+        s = s.replace(old, new)
+    cjk_only = "".join(c for c in s if is_cjk(c))
+    return cjk_only
+
+
+def export_known_words(output_path):
+    all_words = set()
+    for deck in KNOWN_WORDS_DECKS:
+        try:
+            note_ids = ac("findNotes", query=f'deck:"{deck}"')
+        except Exception as e:
+            print(f"  {deck}: ERROR {e}")
+            continue
+        if not note_ids:
+            print(f"  {deck}: no notes")
+            continue
+        notes = ac("notesInfo", notes=note_ids)
+        deck_words = set()
+        for note in notes:
+            fields = note.get("fields", {})
+            word = ""
+            for fname in KNOWN_WORDS_FIELDS:
+                if fname in fields:
+                    word = _clean_word(fields[fname].get("value", ""))
+                    if word:
+                        break
+            if not word:
+                # Fallback: first field whose cleaned value is a vocab word
+                for fval in fields.values():
+                    word = _clean_word(fval.get("value", ""))
+                    if word:
+                        break
+            if word:
+                deck_words.add(word)
+        print(f"  {deck}: {len(notes)} notes → {len(deck_words)} unique words")
+        all_words.update(deck_words)
+
+    sorted_words = sorted(all_words)
+    with open(output_path, "w") as f:
+        f.write("\n".join(sorted_words) + "\n")
+    print(f"\nWrote {len(sorted_words)} unique known words → {output_path}")
+    print("Import in Migaku: Memory → Settings → Known Words → Import (language: Chinese Simplified)")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REGENERATE AUDIO (for existing notes — e.g. after voice library update)
+# ══════════════════════════════════════════════════════════════════════
+
+def regenerate_audio_for_existing(deck=DECK, tag="claude"):
+    query = f'deck:"{deck}" tag:{tag}'
+    note_ids = ac("findNotes", query=query)
+    if not note_ids:
+        print(f"No notes found for: {query}")
+        return
+    notes = ac("notesInfo", notes=note_ids)
+
+    targets = []
+    skipped_no_audio = 0
+    for note in notes:
+        fields = note.get("fields", {})
+        sentence = fields.get("Sentence", {}).get("value", "")
+        audio_field = fields.get("Audio", {}).get("value", "")
+        m = re.search(r"\[sound:([^\]]+)\]", audio_field)
+        if not (sentence and m):
+            skipped_no_audio += 1
+            continue
+        targets.append({"sentence": sentence, "filename": m.group(1)})
+
+    print(f"Found {len(targets)} notes with audio to regenerate"
+          f" ({skipped_no_audio} skipped — no Sentence or no [sound:] reference)")
+    if not targets:
+        return
+
+    print(f"Generating {len(targets)} audio files ({VOICE}, {WORKERS} workers)...")
+    audio = generate_all_audio(targets)
+
+    print(f"Overwriting media files in Anki...")
+    t0 = time.time()
+    uploaded, failed = 0, []
+    for i, t in enumerate(targets):
+        if i not in audio:
+            failed.append((t["filename"], "audio gen missing"))
+            continue
+        try:
+            ac("storeMediaFile", filename=t["filename"], data=audio[i])
+            uploaded += 1
+        except Exception as e:
+            failed.append((t["filename"], str(e)))
+        if (uploaded + len(failed)) % 40 == 0:
+            print(f"  media: {uploaded + len(failed)}/{len(targets)} ({time.time()-t0:.0f}s)")
+
+    sync_status = sync()
+    print(f"\nDone: {uploaded} regenerated, {len(failed)} failed. Sync: {sync_status}")
+    for fname, err in failed[:10]:
+        print(f"  FAILED: {fname} — {err}")
+    if sync_status == "FULL_SYNC_NEEDED":
+        print("\n  Press Y in Anki desktop → choose 'Upload to AnkiWeb'")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# MAIN
+# ══════════════════════════════════════════════════════════════════════
+
+def main():
+    # Export mode
+    if len(sys.argv) >= 2 and sys.argv[1] == "--export-known-words":
+        output = sys.argv[2] if len(sys.argv) >= 3 else KNOWN_WORDS_DEFAULT_OUTPUT
+        ac("version")
+        print(f"Exporting known words from {len(KNOWN_WORDS_DECKS)} deck(s)...")
+        export_known_words(output)
+        return
+
+    # Regenerate-audio mode
+    if len(sys.argv) >= 2 and sys.argv[1] == "--regenerate-audio":
+        ac("version")
+        regenerate_audio_for_existing()
+        return
+
+    if len(sys.argv) != 2:
+        print(f"Usage: python3 {sys.argv[0]} <file.txt>")
+        print(f"       python3 {sys.argv[0]} --export-known-words [output.txt]")
+        print(f"       python3 {sys.argv[0]} --regenerate-audio")
+        sys.exit(1)
+
+    filepath = sys.argv[1]
+    if not os.path.exists(filepath):
+        print(f"ERROR: File not found: {filepath}")
+        sys.exit(1)
+
+    # Verify AnkiConnect is reachable
+    ac("version")
+
+    # Step 1: Parse
+    entries = parse_file(filepath)
+    print(f"Parsed: {len(entries)} entries")
+
+    if not entries:
+        print("No entries found. Check file format.")
+        sys.exit(1)
+
+    # Step 2: Convert
+    converted = convert_er(entries)
+    if converted:
+        print(f"Converted: {converted} entries (儿→里)")
+
+    # Step 3: Classify
+    cards = []
+    for e in entries:
+        word, tag = classify(e)
+        cards.append({
+            "word": word,
+            "sentence": e["hanzi"],
+            "pinyin": e["pinyin"],
+            "english": e["english"],
+            "notes": "",
+            "tags": [tag],
+        })
+    vocab_count = sum(1 for c in cards if c["word"])
+    print(f"Classified: {vocab_count} vocab, {len(cards) - vocab_count} sentences")
+
+    # Step 4: Audio
+    print(f"Generating {len(cards)} audio files ({VOICE}, {WORKERS} workers)...")
+    audio = generate_all_audio(cards)
+
+    # Step 5: Upload + Create
+    print(f"Uploading to {DECK} as batch{BATCH}...")
+    created, skipped, failed = upload_and_create(cards, audio)
+
+    # Step 6: Sync
+    sync_status = sync()
+
+    # Step 7: Summary
+    print(f"\nDone: {created} created, {skipped} duplicates skipped, {len(failed)} failed. Sync: {sync_status}")
+    if failed:
+        for sentence, err in failed[:10]:
+            print(f"  FAILED: {sentence} — {err}")
+    if sync_status == "FULL_SYNC_NEEDED":
+        print("\n  Press Y in Anki desktop → choose 'Upload to AnkiWeb'")
+
+
+if __name__ == "__main__":
+    main()
