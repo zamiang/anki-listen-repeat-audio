@@ -162,6 +162,26 @@ def source_tag(path):
     return f"src:{safe}"
 
 
+def find_collisions(notes):
+    """Return {filename: sorted distinct sentences} for any media file referenced
+    by more than one distinct sentence.
+
+    Input is AnkiConnect notesInfo results. An empty dict means the collection is
+    clean. Notes with no [sound:...] reference are ignored.
+    """
+    from collections import defaultdict
+
+    fn_to_sentences = defaultdict(set)
+    for note in notes:
+        fields = note.get("fields", {})
+        sentence = fields.get("Sentence", {}).get("value", "").strip()
+        m = re.search(r"\[sound:([^\]]+)\]", fields.get("Audio", {}).get("value", ""))
+        if not m:
+            continue
+        fn_to_sentences[m.group(1)].add(sentence)
+    return {fn: sorted(s) for fn, s in fn_to_sentences.items() if len(s) > 1}
+
+
 # ══════════════════════════════════════════════════════════════════════
 # STEP 1: PARSE
 # ══════════════════════════════════════════════════════════════════════

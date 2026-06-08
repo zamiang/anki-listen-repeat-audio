@@ -38,3 +38,34 @@ class TestSourceTag:
     def test_spaces_become_hyphens(self):
         # Anki tags cannot contain spaces.
         assert imp.source_tag("my deck.txt") == "src:my-deck"
+
+
+def _note(sentence, filename):
+    """Build a minimal notesInfo-shaped dict."""
+    return {
+        "fields": {
+            "Sentence": {"value": sentence},
+            "Audio": {"value": f"[sound:{filename}]"},
+        }
+    }
+
+
+class TestFindCollisions:
+    def test_no_collisions(self):
+        notes = [_note("吃", "claude_aaa.m4a"), _note("喝", "claude_bbb.m4a")]
+        assert imp.find_collisions(notes) == {}
+
+    def test_one_filename_two_sentences(self):
+        notes = [_note("吃", "claude_x.m4a"), _note("我喜欢喝珍珠奶茶", "claude_x.m4a")]
+        result = imp.find_collisions(notes)
+        assert set(result.keys()) == {"claude_x.m4a"}
+        assert result["claude_x.m4a"] == ["吃", "我喜欢喝珍珠奶茶"]
+
+    def test_same_sentence_same_file_is_not_a_collision(self):
+        # Idempotent re-import: identical text reusing its own file is fine.
+        notes = [_note("吃", "claude_x.m4a"), _note("吃", "claude_x.m4a")]
+        assert imp.find_collisions(notes) == {}
+
+    def test_note_without_audio_ref_is_ignored(self):
+        notes = [{"fields": {"Sentence": {"value": "吃"}, "Audio": {"value": ""}}}]
+        assert imp.find_collisions(notes) == {}
