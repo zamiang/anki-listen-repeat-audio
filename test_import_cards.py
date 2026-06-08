@@ -26,3 +26,15 @@ class TestMediaFilename:
 
     def test_different_text_different_name(self):
         assert imp.media_filename("吃") != imp.media_filename("我喜欢喝珍珠奶茶")
+
+
+class TestSourceTag:
+    def test_basic_stem(self):
+        assert imp.source_tag("hsk1-food.txt") == "src:hsk1-food"
+
+    def test_strips_directory(self):
+        assert imp.source_tag("/tmp/decks/hsk1-food.txt") == "src:hsk1-food"
+
+    def test_spaces_become_hyphens(self):
+        # Anki tags cannot contain spaces.
+        assert imp.source_tag("my deck.txt") == "src:my-deck"

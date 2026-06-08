@@ -151,6 +151,17 @@ def media_filename(sentence):
     return f"{FILENAME_PREFIX}_{digest}.m4a"
 
 
+def source_tag(path):
+    """Derive a 'src:<stem>' Anki tag from the input filename.
+
+    Replaces the old batch{BATCH} tag (also keyed off the hand-edited global).
+    Whitespace is collapsed to hyphens because Anki tags cannot contain spaces.
+    """
+    stem = os.path.splitext(os.path.basename(path))[0]
+    safe = re.sub(r"\s+", "-", stem.strip())
+    return f"src:{safe}"
+
+
 # ══════════════════════════════════════════════════════════════════════
 # STEP 1: PARSE
 # ══════════════════════════════════════════════════════════════════════
