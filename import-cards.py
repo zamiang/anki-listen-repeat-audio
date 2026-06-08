@@ -584,6 +584,11 @@ def main():
     if failed:
         for sentence, err in failed[:10]:
             print(f"  FAILED: {sentence} — {err}")
+
+    # Step 8: Auto-verify — confirm no filename now maps to two sentences.
+    print("\nVerifying media integrity...")
+    audit_collisions()
+
     if sync_status == "FULL_SYNC_NEEDED":
         print("\n  Press Y in Anki desktop → choose 'Upload to AnkiWeb'")
 
