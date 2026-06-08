@@ -415,6 +415,29 @@ def export_known_words(output_path):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# AUDIT COLLISIONS
+# ══════════════════════════════════════════════════════════════════════
+
+
+def audit_collisions():
+    """Fetch all claude-tagged notes and report media files referenced by >1 sentence.
+
+    Returns the number of colliding filenames (0 = clean). Used by --audit and by
+    the post-import auto-verify step.
+    """
+    note_ids = ac("findNotes", query="tag:claude")
+    notes = ac("notesInfo", notes=note_ids) if note_ids else []
+    collisions = find_collisions(notes)
+    if not collisions:
+        print(f"AUDIT PASS: {len(notes)} claude notes, no filename collisions.")
+        return 0
+    print(f"AUDIT FAIL: {len(collisions)} audio file(s) map to >1 sentence:")
+    for fn, sentences in sorted(collisions.items()):
+        print(f"  {fn} -> {sentences}")
+    return len(collisions)
+
+
+# ══════════════════════════════════════════════════════════════════════
 # REGENERATE AUDIO (for existing notes — e.g. after voice library update)
 # ══════════════════════════════════════════════════════════════════════
 
@@ -486,6 +509,11 @@ def main():
         export_known_words(output)
         return
 
+    # Audit mode
+    if len(sys.argv) >= 2 and sys.argv[1] == "--audit":
+        ac("version")
+        sys.exit(1 if audit_collisions() else 0)
+
     # Regenerate-audio mode
     if len(sys.argv) >= 2 and sys.argv[1] == "--regenerate-audio":
         ac("version")
@@ -496,6 +524,7 @@ def main():
         print(f"Usage: python3 {sys.argv[0]} <file.txt>")
         print(f"       python3 {sys.argv[0]} --export-known-words [output.txt]")
         print(f"       python3 {sys.argv[0]} --regenerate-audio")
+        print(f"       python3 {sys.argv[0]} --audit")
         sys.exit(1)
 
     filepath = sys.argv[1]
