@@ -523,17 +523,20 @@ def regenerate_audio_for_existing(deck=DECK, tag="claude"):
 # ══════════════════════════════════════════════════════════════════════
 
 
-def repair_audio(deck=DECK, tag="claude"):
+def repair_audio(tag="claude"):
     """Migrate existing notes onto content-hash audio filenames.
 
     For every note whose audio is not already named after its Sentence's hash,
     regenerate the audio from the Sentence and re-point the note at a fresh
     claude_<sha1>.m4a file. This gives every note its own correct audio and
     eliminates the filename collisions that caused audio↔text mismatches.
+
+    Scoped by tag across all decks (matching --audit), so claude notes that were
+    moved into other decks are migrated too.
     """
-    note_ids = ac("findNotes", query=f'deck:"{deck}" tag:{tag}')
+    note_ids = ac("findNotes", query=f"tag:{tag}")
     if not note_ids:
-        print(f'No notes found for: deck:"{deck}" tag:{tag}')
+        print(f"No notes found for: tag:{tag}")
         return
     notes = ac("notesInfo", notes=note_ids)
 
