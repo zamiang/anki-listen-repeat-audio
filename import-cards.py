@@ -7,6 +7,7 @@ Usage:
     python3 import-cards.py --export-known-words [out]    # dump hanzi for Migaku
     python3 import-cards.py --regenerate-audio            # re-TTS all claude-tagged notes
     python3 import-cards.py --audit                       # report audio↔text mismatches
+    python3 import-cards.py --repair                      # fix mismatches: migrate to content-hash audio
 
 Requires: Anki running with AnkiConnect (port 8765), macOS say + afconvert.
 """
@@ -179,6 +180,29 @@ def find_collisions(notes):
             continue
         fn_to_sentences[m.group(1)].add(sentence)
     return {fn: sorted(s) for fn, s in fn_to_sentences.items() if len(s) > 1}
+
+
+def repair_targets(notes):
+    """Notes whose Audio filename differs from the content-hash name for their Sentence.
+
+    Input is AnkiConnect notesInfo results. Returns a list of
+    {"id", "sentence", "filename"} dicts identifying notes that need their audio
+    regenerated and re-pointed at a content-hash filename. Notes without a Sentence
+    are skipped. A note already on the correct content-hash name is not a target,
+    so repair is idempotent (a second run finds nothing to do).
+    """
+    targets = []
+    for note in notes:
+        fields = note.get("fields", {})
+        sentence = fields.get("Sentence", {}).get("value", "").strip()
+        if not sentence:
+            continue
+        new_fn = media_filename(sentence)
+        m = re.search(r"\[sound:([^\]]+)\]", fields.get("Audio", {}).get("value", ""))
+        current_fn = m.group(1) if m else None
+        if current_fn != new_fn:
+            targets.append({"id": note.get("noteId"), "sentence": sentence, "filename": new_fn})
+    return targets
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -495,6 +519,91 @@ def regenerate_audio_for_existing(deck=DECK, tag="claude"):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# REPAIR (migrate existing notes to content-hash audio, fixing collisions)
+# ══════════════════════════════════════════════════════════════════════
+
+
+def repair_audio(deck=DECK, tag="claude"):
+    """Migrate existing notes onto content-hash audio filenames.
+
+    For every note whose audio is not already named after its Sentence's hash,
+    regenerate the audio from the Sentence and re-point the note at a fresh
+    claude_<sha1>.m4a file. This gives every note its own correct audio and
+    eliminates the filename collisions that caused audio↔text mismatches.
+    """
+    note_ids = ac("findNotes", query=f'deck:"{deck}" tag:{tag}')
+    if not note_ids:
+        print(f'No notes found for: deck:"{deck}" tag:{tag}')
+        return
+    notes = ac("notesInfo", notes=note_ids)
+
+    targets = repair_targets(notes)
+    if not targets:
+        print(f"Nothing to repair: all {len(notes)} notes already use content-hash audio.")
+        return
+    print(f"Repairing {len(targets)}/{len(notes)} notes (migrating to content-hash audio)...")
+
+    # Identical sentences hash to the same filename — generate each file only once.
+    unique = {}
+    for t in targets:
+        unique.setdefault(t["filename"], t["sentence"])
+    uniq_list = [{"sentence": s, "filename": fn} for fn, s in unique.items()]
+    print(f"Generating {len(uniq_list)} audio files ({VOICE}, {WORKERS} workers)...")
+    audio = generate_all_audio(uniq_list)
+    fn_to_b64 = {uniq_list[i]["filename"]: b64 for i, b64 in audio.items()}
+
+    # Store each new media file once.
+    stored, store_failed = 0, []
+    for fn, b64 in fn_to_b64.items():
+        try:
+            ac("storeMediaFile", filename=fn, data=b64)
+            stored += 1
+        except Exception as e:
+            store_failed.append((fn, str(e)))
+
+    # Re-point each note's Audio field at its content-hash file.
+    print("Updating note Audio fields...")
+    t0 = time.time()
+    updated, update_failed = 0, []
+    for t in targets:
+        if t["filename"] not in fn_to_b64:
+            update_failed.append((t["id"], "audio gen missing"))
+            continue
+        try:
+            ac(
+                "updateNoteFields",
+                note={"id": t["id"], "fields": {"Audio": f"[sound:{t['filename']}]"}},
+            )
+            updated += 1
+        except Exception as e:
+            update_failed.append((t["id"], str(e)))
+        if (updated + len(update_failed)) % 40 == 0:
+            print(
+                f"  notes: {updated + len(update_failed)}/{len(targets)} ({time.time() - t0:.0f}s)"
+            )
+
+    # Verify the collection is now clean, then sync.
+    print("\nVerifying media integrity...")
+    remaining = audit_collisions()
+
+    sync_status = sync()
+    print(
+        f"\nDone: {updated} notes repaired, {stored} media files stored, "
+        f"{len(update_failed)} update failures, {len(store_failed)} store failures. "
+        f"Collisions remaining: {remaining}. Sync: {sync_status}"
+    )
+    for ident, err in (update_failed + store_failed)[:10]:
+        print(f"  FAILED: {ident} — {err}")
+    if sync_status == "FULL_SYNC_NEEDED":
+        print("\n  Press Y in Anki desktop → choose 'Upload to AnkiWeb'")
+    if remaining == 0:
+        print(
+            "\n  Old batch-named media files are now unreferenced. To reclaim space, run"
+            "\n  Anki → Tools → Check Media → Delete Unused."
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
 
@@ -519,11 +628,18 @@ def main():
         regenerate_audio_for_existing()
         return
 
+    # Repair mode: migrate existing notes to content-hash audio, fixing collisions
+    if len(sys.argv) >= 2 and sys.argv[1] == "--repair":
+        ac("version")
+        repair_audio()
+        return
+
     if len(sys.argv) != 2:
         print(f"Usage: python3 {sys.argv[0]} <file.txt>")
         print(f"       python3 {sys.argv[0]} --export-known-words [output.txt]")
         print(f"       python3 {sys.argv[0]} --regenerate-audio")
         print(f"       python3 {sys.argv[0]} --audit")
+        print(f"       python3 {sys.argv[0]} --repair")
         sys.exit(1)
 
     filepath = sys.argv[1]

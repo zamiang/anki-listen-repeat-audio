@@ -69,3 +69,38 @@ class TestFindCollisions:
     def test_note_without_audio_ref_is_ignored(self):
         notes = [{"fields": {"Sentence": {"value": "吃"}, "Audio": {"value": ""}}}]
         assert imp.find_collisions(notes) == {}
+
+
+def _note_with_id(note_id, sentence, filename):
+    """notesInfo-shaped dict including a noteId and a [sound:] audio ref."""
+    audio = f"[sound:{filename}]" if filename is not None else ""
+    return {
+        "noteId": note_id,
+        "fields": {
+            "Sentence": {"value": sentence},
+            "Audio": {"value": audio},
+        },
+    }
+
+
+class TestRepairTargets:
+    def test_old_batch_name_is_a_target(self):
+        # A note on a positional batch filename must migrate to its content hash.
+        notes = [_note_with_id(1, "吃", "claude_batch5_001.m4a")]
+        targets = imp.repair_targets(notes)
+        assert targets == [{"id": 1, "sentence": "吃", "filename": imp.media_filename("吃")}]
+
+    def test_already_hashed_is_not_a_target(self):
+        # Idempotent: a note already on the correct content-hash name is left alone.
+        notes = [_note_with_id(1, "吃", imp.media_filename("吃"))]
+        assert imp.repair_targets(notes) == []
+
+    def test_missing_audio_is_a_target(self):
+        # A note with no [sound:] reference still needs its content-hash audio.
+        notes = [_note_with_id(1, "吃", None)]
+        targets = imp.repair_targets(notes)
+        assert targets == [{"id": 1, "sentence": "吃", "filename": imp.media_filename("吃")}]
+
+    def test_empty_sentence_is_skipped(self):
+        notes = [_note_with_id(1, "", "claude_batch5_001.m4a")]
+        assert imp.repair_targets(notes) == []
