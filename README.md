@@ -59,7 +59,7 @@ python3 generate-practice-audio.py --source file --file my-vocab.txt --mode prod
 ### Anki (via AnkiConnect)
 
 The script queries AnkiConnect for notes matching your search. It expects the
-**`ChineseSimplified`** note type, with these fields:
+**`ChineseTraditional`** note type, with these fields:
 
 | Field | Purpose |
 |---|---|
@@ -71,7 +71,7 @@ The script queries AnkiConnect for notes matching your search. It expects the
 Notes lacking `Sentence`/`English` (i.e. a different note type) are skipped with a
 warning that lists the fields actually found; if a query matches **no** usable notes
 the script exits with an error rather than producing silent/empty output. Scope your
-query to the right note type, e.g. `--query 'note:ChineseSimplified deck:"My Deck"'`.
+query to the right note type, e.g. `--query 'note:ChineseTraditional deck:"My Deck"'`.
 
 By default, audio follows the note order Anki returns (sorted by note id), so tracks
 line up with study order. Pass `--group` to instead cluster each example sentence
@@ -93,7 +93,7 @@ nǐ hǎo
 0002
 Thank you
 xiè xiè
-谢谢
+謝謝
 ```
 
 Pattern per entry: 4-digit ID, English, romanization, target language text. Separated by blank lines.
@@ -108,9 +108,20 @@ audio-practice/
     ...
   production/                      # [English] → pause → [Target]
     001_你好.m4a                    #   individual mode: one file per entry
-    002_谢谢.m4a
+    002_謝謝.m4a
     ...
 ```
+
+## Companion scripts
+
+- **`import-cards.py`** — imports vocabulary from text files into Anki (TTS audio,
+  content-hash media names, theme tagging). Stdlib only.
+- **`revise-cards.py`** — bulk revision tool: exports all claude-tagged notes to a
+  reviewable JSONL (with an OpenCC simplified→traditional Taiwan-standard baseline),
+  then applies the edited file back to Anki with regenerated audio. Requires
+  `pip3 install opencc` (the only script with a pip dependency).
+- **`apply-hanzi-font.py`** — applies the LXGW WenKai kaishu font to Chinese text
+  across note types.
 
 ## Adapting for other languages
 

@@ -33,7 +33,7 @@ HANZI_SELECTORS = {
     "Basic - New HSK (2025) with sentences - Pinyin": ".char-card, .char, .char-sim-1, .char-trad-1",
     "Basic - New HSK (2025) with sentences - Write": ".char-card, .char, .char-sim-1, .char-trad-1",
     "SpoonFedNote": ".card",
-    "ChineseSimplified": ".word, .sentence",
+    "ChineseTraditional": ".word, .sentence",
     "HSK Fav": ".hanzi, .hanzi2, .sentenceFront, .sentenceBack",
     "HSK-cef09": ".word, .sentence",
 }

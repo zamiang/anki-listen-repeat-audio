@@ -62,7 +62,7 @@ def ac(action, **params):
 
 
 def notes_to_entries(notes_info):
-    """Map AnkiConnect notesInfo results to entries (ChineseSimplified note type).
+    """Map AnkiConnect notesInfo results to entries (ChineseTraditional note type).
 
     Returns (entries, skipped). A note is skipped when it lacks the required
     'Sentence' and 'English' fields — e.g. a query that matched a different note
@@ -108,13 +108,13 @@ def fetch_from_anki(query, group=False):
         )
         print(f"  Fields on first matched note: {found_fields}")
         print(
-            "  This script expects the 'ChineseSimplified' note type "
+            "  This script expects the 'ChineseTraditional' note type "
             "(fields: Sentence, Word, Pinyin, English)."
         )
     if not entries:
         print(
             "ERROR: no matched notes had usable Sentence + English fields. "
-            "Narrow your --query to ChineseSimplified notes (e.g. add 'note:ChineseSimplified')."
+            "Narrow your --query to ChineseTraditional notes (e.g. add 'note:ChineseTraditional')."
         )
         sys.exit(1)
 
