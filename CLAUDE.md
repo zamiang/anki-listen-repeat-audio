@@ -26,14 +26,14 @@ output directory is gitignored.
 ## Commands
 
 ```bash
-# Lint
-ruff check generate-practice-audio.py import-cards.py revise-cards.py
+# Lint (discovers all Python files via pyproject.toml, matching CI)
+ruff check
 
 # Format check
-ruff format --check generate-practice-audio.py
+ruff format --check
 
 # Format fix
-ruff format generate-practice-audio.py
+ruff format
 
 # Run all tests (requires macOS + ffmpeg)
 pytest test_generate.py -v
