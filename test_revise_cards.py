@@ -7,6 +7,7 @@ pip dependency in this repo, needed only for migration tooling).
 
 import importlib.util
 import sys
+import types
 
 import pytest
 
@@ -168,3 +169,74 @@ class TestJsonlRoundTrip:
         path = tmp_path / "rev.jsonl"
         path.write_text('{"a": 1}\n\n{"b": 2}\n')
         assert rev.read_jsonl(str(path)) == [{"a": 1}, {"b": 2}]
+
+
+class TestApplyAudioGuard:
+    """cmd_apply must not create/update notes whose audio generation failed,
+    or the note ends up with a dangling [sound:...] reference that won't play.
+    """
+
+    def _run_apply(self, monkeypatch, tmp_path, entries, missing_sentences):
+        """Run cmd_apply with AnkiConnect + audio stubbed out.
+
+        Audio is "generated" for every unique sentence except those in
+        `missing_sentences`, simulating a partial generate_all_audio failure.
+        Returns the list of (action, kwargs) AnkiConnect calls that were made.
+        """
+        path = tmp_path / "rev.jsonl"
+        rev.write_jsonl(str(path), entries)
+
+        calls = []
+
+        def fake_ac(action, **kw):
+            calls.append((action, kw))
+            if action == "notesInfo":
+                # Return a live note per requested id so nothing is "missing".
+                return [_note(nid, "placeholder") for nid in kw["notes"]]
+            if action == "addNote":
+                return 1  # fake new note id
+            return None
+
+        def fake_generate_all_audio(uniq):
+            return {
+                i: "ZmFrZQ=="  # b64("fake")
+                for i, item in enumerate(uniq)
+                if item["sentence"] not in missing_sentences
+            }
+
+        monkeypatch.setattr(imp, "ac", fake_ac)
+        monkeypatch.setattr(imp, "generate_all_audio", fake_generate_all_audio)
+        monkeypatch.setattr(imp, "audit_collisions", lambda: 0)
+        monkeypatch.setattr(imp, "sync", lambda: "OK")
+
+        args = types.SimpleNamespace(file=str(path), limit=None, dry_run=False)
+        rev.cmd_apply(args)
+        return calls
+
+    def test_new_card_with_failed_audio_is_not_created(self, monkeypatch, tmp_path):
+        good, bad = "我想喝茶", "我想喝咖啡"
+        calls = self._run_apply(
+            monkeypatch,
+            tmp_path,
+            [_entry(None, good), _entry(None, bad)],
+            missing_sentences={bad},
+        )
+        added = [kw["note"]["fields"]["Sentence"] for action, kw in calls if action == "addNote"]
+        assert good in added
+        assert bad not in added  # the guard skipped it; no dangling [sound:] note
+
+    def test_new_card_with_audio_is_created(self, monkeypatch, tmp_path):
+        sentence = "我想喝茶"
+        calls = self._run_apply(
+            monkeypatch, tmp_path, [_entry(None, sentence)], missing_sentences=set()
+        )
+        added = [kw["note"]["fields"]["Sentence"] for action, kw in calls if action == "addNote"]
+        assert added == [sentence]
+
+    def test_existing_note_with_failed_audio_is_not_updated(self, monkeypatch, tmp_path):
+        # Symmetry check: the update path guards the same way.
+        sentence = "我想喝咖啡"
+        calls = self._run_apply(
+            monkeypatch, tmp_path, [_entry(1, sentence)], missing_sentences={sentence}
+        )
+        assert not any(action == "updateNoteFields" for action, kw in calls)

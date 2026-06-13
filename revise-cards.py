@@ -290,6 +290,9 @@ def cmd_apply(args):
     created, dup_skipped, create_failed = 0, 0, []
     for e in new:
         fn = imp.media_filename(e["sentence"])
+        if fn not in fn_to_b64:
+            create_failed.append((e["sentence"], "audio gen missing"))
+            continue
         try:
             imp.ac(
                 "addNote",

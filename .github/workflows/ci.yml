@@ -46,4 +46,4 @@ jobs:
           pip install pytest
           brew install ffmpeg
       - name: Run all tests
-        run: pytest test_generate.py -v
+        run: pytest test_generate.py test_import_cards.py test_revise_cards.py -v

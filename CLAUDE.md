@@ -27,7 +27,7 @@ output directory is gitignored.
 
 ```bash
 # Lint
-ruff check generate-practice-audio.py
+ruff check generate-practice-audio.py import-cards.py revise-cards.py
 
 # Format check
 ruff format --check generate-practice-audio.py
@@ -37,6 +37,9 @@ ruff format generate-practice-audio.py
 
 # Run all tests (requires macOS + ffmpeg)
 pytest test_generate.py -v
+
+# Run import/revise helper tests (pure Python, no system deps)
+pytest test_import_cards.py test_revise_cards.py -v
 
 # Run parser tests only (no system deps)
 pytest test_generate.py -v -k "TestParseFile"
