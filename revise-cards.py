@@ -126,7 +126,8 @@ def validate_entries(entries, convert=None):
         if not isinstance(e, dict):
             bad("not a JSON object")
             continue
-        missing = [k for k in ["noteId", "sentence", "pinyin", "english"] if k not in e]
+        required = ["noteId", "sentence", "pinyin", "english", "word", "notes"]
+        missing = [k for k in required if k not in e]
         if missing:
             bad(f"missing keys: {missing}")
             continue
@@ -296,7 +297,7 @@ def cmd_apply(args):
                     "deckName": imp.DECK,
                     "modelName": imp.MODEL,
                     "fields": target_fields(e),
-                    "tags": imp.GLOBAL_TAGS + e.get("tags", []),
+                    "tags": imp.GLOBAL_TAGS + e.get("add_tags", []),
                 },
             )
             created += 1

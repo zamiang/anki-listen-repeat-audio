@@ -27,9 +27,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install pytest
-        run: pip install pytest
+        run: pip install pytest opencc
       - name: Run parser tests
         run: pytest test_generate.py -v -k "TestParseFile"
+      - name: Run import/revise helper tests
+        run: pytest test_import_cards.py test_revise_cards.py -v
 
   test-audio:
     name: "Tests: full suite (macOS)"

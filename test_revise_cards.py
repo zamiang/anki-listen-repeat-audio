@@ -109,6 +109,16 @@ class TestValidateEntries:
     def test_missing_keys_flagged(self):
         assert rev.validate_entries([{"noteId": 1}]) != []
 
+    def test_missing_word_or_notes_flagged(self):
+        # target_fields() reads entry["word"]/entry["notes"] unconditionally,
+        # so validate must require them or apply crashes with KeyError.
+        e = _entry(None, "我想喝茶")
+        del e["word"]
+        assert any("word" in p for p in rev.validate_entries([e]))
+        e = _entry(None, "我想喝茶")
+        del e["notes"]
+        assert any("notes" in p for p in rev.validate_entries([e]))
+
     def test_empty_sentence_flagged(self):
         assert rev.validate_entries([_entry(1, "")]) != []
 
