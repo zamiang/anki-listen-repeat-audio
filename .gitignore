@@ -5,3 +5,5 @@ __pycache__/
 .pytest_cache/
 audio-practice/
 output/
+*.apkg
+migaku_known_words.txt

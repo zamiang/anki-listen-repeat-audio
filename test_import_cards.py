@@ -40,6 +40,34 @@ class TestSourceTag:
         assert imp.source_tag("my deck.txt") == "src:my-deck"
 
 
+class TestConvertEr:
+    def test_traditional_er_to_li(self):
+        entries = [{"hanzi": "你在哪兒？", "pinyin": "Nǐ zài nǎr?"}]
+        count = imp.convert_er(entries)
+        assert count == 1
+        assert entries[0]["hanzi"] == "你在哪裡？"
+        assert entries[0]["pinyin"] == "Nǐ zài nǎlǐ?"
+
+    def test_no_er_unchanged(self):
+        entries = [{"hanzi": "我想喝茶", "pinyin": "Wǒ xiǎng hē chá"}]
+        assert imp.convert_er(entries) == 0
+        assert entries[0]["hanzi"] == "我想喝茶"
+
+
+class TestCleanWord:
+    def test_traditional_word_passes_through(self):
+        assert imp._clean_word("謝謝") == "謝謝"
+
+    def test_traditional_er_normalized(self):
+        assert imp._clean_word("這兒") == "這裡"
+
+    def test_html_stripped(self):
+        assert imp._clean_word("<b>朋友</b>") == "朋友"
+
+    def test_sentence_rejected(self):
+        assert imp._clean_word("我想喝茶。") == ""
+
+
 def _note(sentence, filename):
     """Build a minimal notesInfo-shaped dict."""
     return {

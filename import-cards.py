@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Import Chinese flashcards from a structured text file into Anki via AnkiConnect.
+Import Chinese flashcards (traditional characters, Taiwan standard) from a
+structured text file into Anki via AnkiConnect. Notes use the ChineseTraditional
+note type.
 
 Usage:
     python3 import-cards.py <file.txt>                    # import a batch
@@ -29,16 +31,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ANKI_URL = "http://localhost:8765"
 DECK = "HSK 1::Claude"
-MODEL = "ChineseSimplified"
+MODEL = "ChineseTraditional"
 
 VOICE = "Meijia"  # Taiwan Mandarin (zh_TW)
 WORKERS = 4  # parallel TTS threads
 FILENAME_PREFIX = "claude"  # media: claude_<sha1(sentence)[:10]>.m4a
 
 HANZI_CONVERSIONS = {
-    "哪儿": "哪里",
-    "这儿": "这里",
-    "那儿": "那里",
+    "哪兒": "哪裡",
+    "這兒": "這裡",
+    "那兒": "那裡",
 }
 
 PINYIN_CONVERSIONS = {
@@ -61,7 +63,7 @@ KNOWN_WORDS_DECKS = [
     "Anki-xiehanzi - New HSK (2025) with sentences::HSK 1::Meaning",
 ]
 # Field names to try (in order) for the vocab/word value on each note.
-KNOWN_WORDS_FIELDS = ["Word", "Simplified", "Hanzi", "Character", "Front"]
+KNOWN_WORDS_FIELDS = ["Word", "Traditional", "Simplified", "Hanzi", "Character", "Front"]
 KNOWN_WORDS_DEFAULT_OUTPUT = "migaku_known_words.txt"
 
 # Theme detection: (keywords_in_english, tag_name)
@@ -231,7 +233,7 @@ def parse_file(path):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# STEP 2: CONVERT 儿→里
+# STEP 2: CONVERT 兒→裡
 # ══════════════════════════════════════════════════════════════════════
 
 
@@ -255,7 +257,7 @@ def convert_er(entries):
 
 def is_cjk(c):
     cp = ord(c)
-    return 0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF
+    return 0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF or 0xF900 <= cp <= 0xFAFF
 
 
 def classify(entry):
@@ -383,7 +385,7 @@ def sync():
 
 
 def _clean_word(raw):
-    """Strip HTML, normalize 儿→里, keep CJK only. Returns "" if not a vocab word."""
+    """Strip HTML, normalize 兒→裡, keep CJK only. Returns "" if not a vocab word."""
     if not raw:
         return ""
     s = re.sub(r"<[^>]+>", "", raw).strip()
@@ -433,7 +435,7 @@ def export_known_words(output_path):
         f.write("\n".join(sorted_words) + "\n")
     print(f"\nWrote {len(sorted_words)} unique known words → {output_path}")
     print(
-        "Import in Migaku: Memory → Settings → Known Words → Import (language: Chinese Simplified)"
+        "Import in Migaku: Memory → Settings → Known Words → Import (language: Chinese Traditional)"
     )
 
 
@@ -664,7 +666,7 @@ def main():
     # Step 2: Convert
     converted = convert_er(entries)
     if converted:
-        print(f"Converted: {converted} entries (儿→里)")
+        print(f"Converted: {converted} entries (兒→裡)")
 
     # Step 3: Classify
     cards = []

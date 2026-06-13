@@ -8,7 +8,12 @@ Python script that generates dual-language listen-and-repeat audio tracks for la
 
 ```
 generate-practice-audio.py   # Main script (stdlib only, no pip deps)
-test_generate.py             # Pytest suite (42 tests)
+import-cards.py              # Import vocab text files into Anki via AnkiConnect (stdlib only)
+revise-cards.py              # Bulk note revision: export→review JSONL→apply (needs opencc)
+apply-hanzi-font.py          # Apply LXGW WenKai kaishu font to note type CSS
+test_generate.py             # Pytest suite for generate-practice-audio.py
+test_import_cards.py         # Pytest suite for import-cards.py pure helpers
+test_revise_cards.py         # Pytest suite for revise-cards.py pure helpers
 pyproject.toml               # Ruff + pytest config
 README.md                    # User-facing docs
 CLAUDE.md                    # This file
@@ -22,7 +27,7 @@ output directory is gitignored.
 
 ```bash
 # Lint
-ruff check generate-practice-audio.py
+ruff check generate-practice-audio.py import-cards.py revise-cards.py
 
 # Format check
 ruff format --check generate-practice-audio.py
@@ -32,6 +37,9 @@ ruff format generate-practice-audio.py
 
 # Run all tests (requires macOS + ffmpeg)
 pytest test_generate.py -v
+
+# Run import/revise helper tests (pure Python, no system deps)
+pytest test_import_cards.py test_revise_cards.py -v
 
 # Run parser tests only (no system deps)
 pytest test_generate.py -v -k "TestParseFile"
@@ -55,6 +63,16 @@ Single-file script, stdlib only (no pip dependencies). Pipeline:
 All intermediate files are WAV to avoid sample rate mismatches during concatenation. Final encode to m4a happens once at the end.
 
 Key constants at the top of the script: `ZH_VOICE`, `EN_VOICE`, `TTS_SAMPLE_RATE`, `PAUSE_SECONDS`, `WORKERS`.
+
+## Content Conventions
+
+- All Chinese content uses **traditional characters, Taiwan standard** (OpenCC `s2twp`
+  conventions: 裡 not 裏, 軟體 not 软件). The Anki note type is `ChineseTraditional`.
+- Sentence register: natural conversational Taiwan Mandarin at HSK 1-2 level, inspired
+  by the Netflix show *Light the Night* (華燈初上). Avoid stiff textbook phrasing.
+- TTS voice is Meijia (zh_TW) — traditional is its native script.
+- `revise-cards.py` is the only script with a pip dependency (`opencc`, migration
+  tooling only); everything else stays stdlib-only.
 
 ## Critical Invariant
 
