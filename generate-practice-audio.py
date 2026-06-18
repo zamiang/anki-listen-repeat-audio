@@ -39,6 +39,11 @@ WORKERS = 4
 
 OUTPUT_DIR = "audio-practice"  # relative to working dir
 
+# iTunes/Music metadata written into every generated m4a (see build_metadata).
+ALBUM_ARTIST = "Anki Listen & Repeat"
+GENRE = "Language Learning"
+DEFAULT_ALBUM = "Chinese Practice"
+
 # ══════════════════════════════════════════════════════════════════════
 # ANKI CONNECT
 # ══════════════════════════════════════════════════════════════════════
@@ -225,16 +230,23 @@ def generate_silence(duration_s, out_path):
     )
 
 
-def concat_audio(parts, out_path):
+def concat_audio(parts, out_path, metadata=None):
     """Concatenate WAV files using ffmpeg concat demuxer, encode to m4a.
 
     Output is resampled to 44.1 kHz — iTunes/Music can mishandle non-standard
     AAC sample rates (the WAV inputs are 22050 Hz to match macOS `say`).
+
+    metadata: optional dict of iTunes-style tags (title, album, artist, track,
+    genre, ...) written into the m4a so music apps can sort/group the tracks.
     """
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         for p in parts:
             f.write(f"file '{p}'\n")
         listfile = f.name
+    meta_args = []
+    for key, value in (metadata or {}).items():
+        if value:
+            meta_args += ["-metadata", f"{key}={value}"]
     try:
         subprocess.run(
             [
@@ -252,6 +264,7 @@ def concat_audio(parts, out_path):
                 "aac",
                 "-b:a",
                 "128k",
+                *meta_args,
                 "-movflags",
                 "+faststart",
                 out_path,
@@ -261,6 +274,23 @@ def concat_audio(parts, out_path):
         )
     finally:
         os.remove(listfile)
+
+
+def build_metadata(album, mode, title, track, total):
+    """iTunes-style tags so music apps can sort/group the practice tracks.
+
+    Each mode gets its own album (e.g. "Chinese Practice — Recognition") so
+    recognition and production tracks group separately, ordered by track number.
+    """
+    return {
+        "album": f"{album} — {mode.title()}",
+        "album_artist": ALBUM_ARTIST,
+        "artist": ALBUM_ARTIST,
+        "genre": GENRE,
+        "title": title,
+        "track": f"{track}/{total}",
+        "comment": f"{mode} practice track",
+    }
 
 
 def build_track(idx, entry, tmpdir, mode, pause):
@@ -292,14 +322,16 @@ def build_single_track(args):
       - m4a path (batch=False): fully assembled single track
       - list of WAV paths (batch=True): raw parts for batch assembly
     """
-    idx, entry, tmpdir, mode, pause, batch = args
+    idx, entry, tmpdir, mode, pause, batch, album, total = args
     parts, temps = build_track(idx, entry, tmpdir, mode, pause)
     if batch:
         # Keep WAV parts for batch assembly (caller encodes to m4a)
         return idx, parts
     else:
         out = os.path.join(tmpdir, f"{mode}_{idx:04d}.m4a")
-        concat_audio(parts, out)
+        title = entry["hanzi"] if mode == "recognition" else entry["english"]
+        meta = build_metadata(album, mode, title, idx + 1, total)
+        concat_audio(parts, out, metadata=meta)
         for t in temps:
             os.remove(t)
         return idx, out
@@ -340,6 +372,12 @@ def main():
     )
     parser.add_argument(
         "--output", default=OUTPUT_DIR, help=f"Output directory (default: {OUTPUT_DIR})"
+    )
+    parser.add_argument(
+        "--album",
+        default=DEFAULT_ALBUM,
+        help="Album name written to m4a metadata; each mode becomes "
+        f'"{{album}} — Recognition/Production" (default: "{DEFAULT_ALBUM}")',
     )
     parser.add_argument(
         "--group",
@@ -392,7 +430,10 @@ def main():
             # Build tracks in parallel
             t0 = time.time()
             is_batch = args.batch > 0
-            tasks = [(i, e, tmpdir, mode, pause, is_batch) for i, e in enumerate(entries)]
+            tasks = [
+                (i, e, tmpdir, mode, pause, is_batch, args.album, len(entries))
+                for i, e in enumerate(entries)
+            ]
             results = {}
 
             with ThreadPoolExecutor(max_workers=WORKERS) as ex:
@@ -414,6 +455,7 @@ def main():
                 sep_path = os.path.join(tmpdir, "separator.wav")
                 generate_silence(2, sep_path)
                 sorted_indices = sorted(results.keys())
+                total_batches = (len(sorted_indices) + args.batch - 1) // args.batch
                 batch_num = 0
                 for start in range(0, len(sorted_indices), args.batch):
                     chunk = sorted_indices[start : start + args.batch]
@@ -425,12 +467,19 @@ def main():
                         # results[i] is a list of WAV paths [prompt, silence, answer]
                         batch_parts.extend(results[i])
                     out_path = os.path.join(mode_dir, f"{mode}_batch{batch_num:02d}.m4a")
-                    concat_audio(batch_parts, out_path)
                     first_entry = (
                         entries[chunk[0]]["hanzi"]
                         if mode == "recognition"
                         else entries[chunk[0]]["english"]
                     )
+                    meta = build_metadata(
+                        args.album,
+                        mode,
+                        f"Batch {batch_num:02d} — {first_entry}",
+                        batch_num,
+                        total_batches,
+                    )
+                    concat_audio(batch_parts, out_path, metadata=meta)
                     print(f"  → {out_path} ({len(chunk)} items, starts with: {first_entry})")
                 print(f"  {batch_num} batch files written")
             else:

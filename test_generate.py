@@ -7,6 +7,7 @@ TTS tests require macOS say (skipped on other platforms).
 """
 
 import importlib.util
+import json
 import os
 import platform
 import subprocess
@@ -451,6 +452,53 @@ class TestConcatAudio:
             txt_after = len([f for f in os.listdir(tempfile.gettempdir()) if f.endswith(".txt")])
             assert txt_after <= txt_before
 
+    @skip_no_ffmpeg
+    def test_concat_writes_metadata_tags(self):
+        """Metadata dict should be written into the m4a as iTunes-style tags."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            s1 = os.path.join(tmpdir, "s1.wav")
+            out = os.path.join(tmpdir, "out.m4a")
+            gen.generate_silence(1, s1)
+            meta = gen.build_metadata("Chinese Practice", "recognition", "你好", 3, 20)
+            gen.concat_audio([s1], out, metadata=meta)
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format_tags",
+                    "-of",
+                    "json",
+                    out,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            tags = json.loads(result.stdout)["format"]["tags"]
+            # ffmpeg lowercases tag keys in the m4a container.
+            lower = {k.lower(): v for k, v in tags.items()}
+            assert lower["title"] == "你好"
+            assert lower["album"] == "Chinese Practice — Recognition"
+            assert lower["genre"] == "Language Learning"
+            assert lower["track"].startswith("3")
+
+
+class TestBuildMetadata:
+    def test_album_includes_mode(self):
+        meta = gen.build_metadata("Chinese Practice", "production", "Hello", 1, 5)
+        assert meta["album"] == "Chinese Practice — Production"
+
+    def test_track_is_numbered_out_of_total(self):
+        meta = gen.build_metadata("X", "recognition", "t", 3, 20)
+        assert meta["track"] == "3/20"
+
+    def test_constant_tags_present(self):
+        meta = gen.build_metadata("X", "recognition", "t", 1, 1)
+        assert meta["album_artist"] == gen.ALBUM_ARTIST
+        assert meta["genre"] == gen.GENRE
+
 
 # ═══════════════════════════════════════════════════════════════════
 # TTS TESTS (require macOS say + ffmpeg)
@@ -558,7 +606,9 @@ class TestBuildSingleTrack:
     @skip_no_ffmpeg
     def test_batch_mode_returns_wav_parts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            idx, result = gen.build_single_track((0, self.ENTRY, tmpdir, "recognition", 3, True))
+            idx, result = gen.build_single_track(
+                (0, self.ENTRY, tmpdir, "recognition", 3, True, "Test Album", 1)
+            )
             assert idx == 0
             assert isinstance(result, list)
             assert len(result) == 3
@@ -568,7 +618,9 @@ class TestBuildSingleTrack:
     @skip_no_ffmpeg
     def test_individual_mode_returns_m4a_path(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            idx, result = gen.build_single_track((0, self.ENTRY, tmpdir, "recognition", 3, False))
+            idx, result = gen.build_single_track(
+                (0, self.ENTRY, tmpdir, "recognition", 3, False, "Test Album", 1)
+            )
             assert idx == 0
             assert isinstance(result, str)
             assert result.endswith(".m4a")

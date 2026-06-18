@@ -52,6 +52,7 @@ python3 generate-practice-audio.py --source file --file my-vocab.txt --mode prod
 | `--pause` | `4` | Seconds of silence for recall |
 | `--batch` | `0` | Items per batch track (0 = one file per entry) |
 | `--output` | `audio-practice` | Output directory |
+| `--album` | `Chinese Practice` | Album name in m4a metadata (each mode becomes its own album — see below) |
 | `--group` | off | (Anki only) Cluster example sentences under their word anchors. Off by default so audio follows Anki note order — see below. |
 
 ## Input formats
@@ -111,6 +112,18 @@ audio-practice/
     002_謝謝.m4a
     ...
 ```
+
+### Metadata for music apps
+
+Every m4a is tagged with iTunes-style metadata so it sorts and groups cleanly in
+Apple Music and other players:
+
+- **Album** — `{--album} — Recognition` / `{--album} — Production`, so the two
+  directions group as separate albums (default base: `Chinese Practice`).
+- **Track number** — sequential within each album (batch number in batch mode,
+  entry number in individual mode), so tracks play in study order.
+- **Title** — the prompt text (or `Batch NN — <first item>` for batches).
+- **Artist / Album artist** — `Anki Listen & Repeat`; **Genre** — `Language Learning`.
 
 ## Companion scripts
 
