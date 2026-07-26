@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -40,6 +41,10 @@ def has_say():
     return platform.system() == "Darwin"
 
 
+def has_edge_tts():
+    return shutil.which("edge-tts") is not None
+
+
 def write_vocab_file(text):
     """Write text to a temp file and return the path."""
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
@@ -49,6 +54,7 @@ def write_vocab_file(text):
 
 skip_no_ffmpeg = pytest.mark.skipif(not has_ffmpeg(), reason="ffmpeg not installed")
 skip_no_say = pytest.mark.skipif(not has_say(), reason="macOS say not available")
+skip_no_edge = pytest.mark.skipif(not has_edge_tts(), reason="edge-tts CLI not installed")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -549,6 +555,68 @@ class TestSayToWav:
 
 
 # ═══════════════════════════════════════════════════════════════════
+# EDGE TTS TESTS (require edge-tts CLI + ffmpeg + network)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestEdgeTtsToWav:
+    @skip_no_edge
+    @skip_no_ffmpeg
+    def test_generates_wav_at_tts_sample_rate_mono(self):
+        """Edge output (24 kHz mp3) must be resampled to the concat invariant rate."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = os.path.join(tmpdir, "test.wav")
+            gen.edge_tts_to_wav("你好", gen.EDGE_ZH_VOICE, out)
+            assert os.path.getsize(out) > 100
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "stream=sample_rate,channels",
+                    "-of",
+                    "json",
+                    out,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            stream = json.loads(result.stdout)["streams"][0]
+            assert int(stream["sample_rate"]) == gen.TTS_SAMPLE_RATE
+            assert int(stream["channels"]) == 1
+
+    @skip_no_edge
+    @skip_no_ffmpeg
+    def test_cleans_up_mp3_intermediate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = os.path.join(tmpdir, "test.wav")
+            gen.edge_tts_to_wav("hello", gen.EDGE_EN_VOICE, out)
+            assert not os.path.exists(out + ".mp3"), "MP3 intermediate should be deleted"
+
+
+class TestTtsDispatch:
+    """tts_to_wav routes to the engine set by TTS_ENGINE (pure, no synthesis)."""
+
+    def test_say_engine_uses_say_voices(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(gen, "say_to_wav", lambda t, v, o: calls.append(v))
+        monkeypatch.setattr(gen, "TTS_ENGINE", "say")
+        gen.tts_to_wav("你好", "zh", "out.wav")
+        gen.tts_to_wav("hello", "en", "out.wav")
+        assert calls == [gen.ZH_VOICE, gen.EN_VOICE]
+
+    def test_edge_engine_uses_edge_voices(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(gen, "edge_tts_to_wav", lambda t, v, o: calls.append(v))
+        monkeypatch.setattr(gen, "TTS_ENGINE", "edge")
+        gen.tts_to_wav("你好", "zh", "out.wav")
+        gen.tts_to_wav("hello", "en", "out.wav")
+        assert calls == [gen.EDGE_ZH_VOICE, gen.EDGE_EN_VOICE]
+
+
+# ═══════════════════════════════════════════════════════════════════
 # BUILD TRACK TESTS (require macOS say + ffmpeg)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -649,6 +717,8 @@ class TestEndToEnd:
                     vocab_path,
                     "--mode",
                     "recognition",
+                    "--engine",
+                    "say",  # offline engine so the e2e test needs no network
                     "--output",
                     outdir,
                 ]
@@ -707,6 +777,8 @@ class TestEndToEnd:
                         vocab_path,
                         "--mode",
                         "production",
+                        "--engine",
+                        "say",  # offline engine so the e2e test needs no network
                         "--batch",
                         "10",
                         "--output",

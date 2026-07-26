@@ -44,11 +44,14 @@ pytest test_import_cards.py test_revise_cards.py -v
 # Run parser tests only (no system deps)
 pytest test_generate.py -v -k "TestParseFile"
 
-# Generate audio from text file
+# Generate audio from text file (edge engine by default; needs edge-tts CLI + network)
 python3 generate-practice-audio.py --source file --file vocab.txt --batch 20
 
 # Generate audio from Anki (requires Anki desktop + AnkiConnect running)
 python3 generate-practice-audio.py --source anki --query 'deck:"My Deck"' --batch 20
+
+# Offline fallback engine (macOS say voices)
+python3 generate-practice-audio.py --source file --file vocab.txt --engine say
 ```
 
 ## Architecture
@@ -56,13 +59,17 @@ python3 generate-practice-audio.py --source anki --query 'deck:"My Deck"' --batc
 Single-file script, stdlib only (no pip dependencies). Pipeline:
 
 1. **Input** — parse entries from AnkiConnect API or structured text file
-2. **TTS** — macOS `say` command generates AIFF, converted to WAV via ffmpeg
+2. **TTS** — two engines behind `--engine` (dispatched by `tts_to_wav`):
+   - `edge` (default) — `edge-tts` CLI (Azure neural voices, network required,
+     install via `uv tool install edge-tts`) generates 24 kHz MP3
+   - `say` (offline fallback) — macOS `say` generates AIFF
+   Either output is converted to WAV via ffmpeg with explicit `-ar TTS_SAMPLE_RATE -ac 1`
 3. **Silence** — ffmpeg `anullsrc` generates silence WAVs at matching sample rate (22050 Hz)
 4. **Assembly** — ffmpeg concat demuxer joins WAV parts, encodes to AAC m4a with `+faststart`
 
-All intermediate files are WAV to avoid sample rate mismatches during concatenation. Final encode to m4a happens once at the end.
+All intermediate files are WAV to avoid sample rate mismatches during concatenation. Final encode to m4a happens once at the end. The script stays stdlib-only by shelling out to the `edge-tts` CLI (like `say`/`ffmpeg`) rather than importing the package.
 
-Key constants at the top of the script: `ZH_VOICE`, `EN_VOICE`, `TTS_SAMPLE_RATE`, `PAUSE_SECONDS`, `WORKERS`.
+Key constants at the top of the script: `EDGE_ZH_VOICE`, `EDGE_EN_VOICE`, `ZH_VOICE`, `EN_VOICE`, `TTS_SAMPLE_RATE`, `PAUSE_SECONDS`, `WORKERS`.
 
 ## Content Conventions
 
@@ -70,13 +77,14 @@ Key constants at the top of the script: `ZH_VOICE`, `EN_VOICE`, `TTS_SAMPLE_RATE
   conventions: 裡 not 裏, 軟體 not 软件). The Anki note type is `ChineseTraditional`.
 - Sentence register: natural conversational Taiwan Mandarin at HSK 1-2 level, inspired
   by the Netflix show *Light the Night* (華燈初上). Avoid stiff textbook phrasing.
-- TTS voice is Meijia (zh_TW) — traditional is its native script.
+- TTS voices are `zh-TW-HsiaoChenNeural` (edge engine, default) and Meijia (say
+  fallback) — both Taiwan Mandarin, traditional is their native script.
 - `revise-cards.py` is the only script with a pip dependency (`opencc`, migration
   tooling only); everything else stays stdlib-only.
 
 ## Critical Invariant
 
-**TTS_SAMPLE_RATE must match the actual output of the TTS engine.** macOS `say` outputs 22050 Hz. The silence generator uses this same rate. If they differ, ffmpeg concat doubles the duration of the mismatched segments. This was the root cause of a previous timing bug — do not change `TTS_SAMPLE_RATE` without verifying the TTS engine's actual output rate with `ffprobe`.
+**Every WAV part must be at TTS_SAMPLE_RATE before concat.** Both engines' TTS→WAV conversions force `-ar TTS_SAMPLE_RATE -ac 1` (edge-tts natively outputs 24 kHz, `say` 22050 Hz), and the silence generator uses the same rate. If any part's rate differs, ffmpeg concat distorts the duration of the mismatched segments — this was the root cause of a previous timing bug. When adding a TTS engine, route its output through the same forced-resample conversion; do not change `TTS_SAMPLE_RATE` without verifying every part still matches via `ffprobe`.
 
 ## Code Style
 

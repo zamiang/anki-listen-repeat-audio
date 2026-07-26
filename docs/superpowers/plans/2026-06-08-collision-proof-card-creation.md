@@ -259,19 +259,22 @@ def upload_and_create(cards, audio, src_tag):
         filename = media_filename(c["sentence"])
         try:
             ac("storeMediaFile", filename=filename, data=audio[i])
-            ac("addNote", note={
-                "deckName": DECK,
-                "modelName": MODEL,
-                "fields": {
-                    "Sentence": c["sentence"],
-                    "Word": c["word"],
-                    "Pinyin": c["pinyin"],
-                    "English": c["english"],
-                    "Notes": c["notes"],
-                    "Audio": f"[sound:{filename}]",
+            ac(
+                "addNote",
+                note={
+                    "deckName": DECK,
+                    "modelName": MODEL,
+                    "fields": {
+                        "Sentence": c["sentence"],
+                        "Word": c["word"],
+                        "Pinyin": c["pinyin"],
+                        "English": c["english"],
+                        "Notes": c["notes"],
+                        "Audio": f"[sound:{filename}]",
+                    },
+                    "tags": GLOBAL_TAGS + [src_tag] + c["tags"],
                 },
-                "tags": GLOBAL_TAGS + [src_tag] + c["tags"],
-            })
+            )
             created += 1
         except Exception as e:
             err = str(e)
@@ -280,7 +283,9 @@ def upload_and_create(cards, audio, src_tag):
             else:
                 failed.append((c["sentence"], err))
         if (created + skipped + len(failed)) % 40 == 0:
-            print(f"  notes: {created + skipped + len(failed)}/{len(cards)} ({time.time()-t0:.0f}s)")
+            print(
+                f"  notes: {created + skipped + len(failed)}/{len(cards)} ({time.time() - t0:.0f}s)"
+            )
 
     return created, skipped, failed
 ```
@@ -394,33 +399,37 @@ git commit -m "feat: add --audit mode for filename collision detection"
 In `main()`, find the end of the import flow (after Step 6 sync, around line 442):
 
 ```python
-    # Step 6: Sync
-    sync_status = sync()
+# Step 6: Sync
+sync_status = sync()
 
-    # Step 7: Summary
-    print(f"\nDone: {created} created, {skipped} duplicates skipped, {len(failed)} failed. Sync: {sync_status}")
-    if failed:
-        for sentence, err in failed[:10]:
-            print(f"  FAILED: {sentence} — {err}")
-    if sync_status == "FULL_SYNC_NEEDED":
-        print("\n  Press Y in Anki desktop → choose 'Upload to AnkiWeb'")
+# Step 7: Summary
+print(
+    f"\nDone: {created} created, {skipped} duplicates skipped, {len(failed)} failed. Sync: {sync_status}"
+)
+if failed:
+    for sentence, err in failed[:10]:
+        print(f"  FAILED: {sentence} — {err}")
+if sync_status == "FULL_SYNC_NEEDED":
+    print("\n  Press Y in Anki desktop → choose 'Upload to AnkiWeb'")
 ```
 
 Insert a verification step between the summary and the `FULL_SYNC_NEEDED` hint, so the block becomes:
 
 ```python
-    # Step 7: Summary
-    print(f"\nDone: {created} created, {skipped} duplicates skipped, {len(failed)} failed. Sync: {sync_status}")
-    if failed:
-        for sentence, err in failed[:10]:
-            print(f"  FAILED: {sentence} — {err}")
+# Step 7: Summary
+print(
+    f"\nDone: {created} created, {skipped} duplicates skipped, {len(failed)} failed. Sync: {sync_status}"
+)
+if failed:
+    for sentence, err in failed[:10]:
+        print(f"  FAILED: {sentence} — {err}")
 
-    # Step 8: Auto-verify — confirm no filename now maps to two sentences.
-    print("\nVerifying media integrity...")
-    audit_collisions()
+# Step 8: Auto-verify — confirm no filename now maps to two sentences.
+print("\nVerifying media integrity...")
+audit_collisions()
 
-    if sync_status == "FULL_SYNC_NEEDED":
-        print("\n  Press Y in Anki desktop → choose 'Upload to AnkiWeb'")
+if sync_status == "FULL_SYNC_NEEDED":
+    print("\n  Press Y in Anki desktop → choose 'Upload to AnkiWeb'")
 ```
 
 - [ ] **Step 2: Confirm the module still imports**
@@ -447,7 +456,7 @@ git commit -m "feat: auto-verify media integrity after import"
 Delete this line (line 35) and its trailing comment:
 
 ```python
-BATCH = 7                  # ← increment this each time you run a new file
+BATCH = 7  # ← increment this each time you run a new file
 ```
 
 Also update the comment on the `FILENAME_PREFIX` line (line 33), which currently reads:
