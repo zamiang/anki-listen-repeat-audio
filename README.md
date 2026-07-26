@@ -151,7 +151,7 @@ To change languages, edit the voice constants at the top of the script:
 ```python
 # edge engine (default) — Azure neural voices
 EDGE_ZH_VOICE = "zh-TW-HsiaoChenNeural"  # ← your target language voice
-EDGE_EN_VOICE = "en-US-AvaNeural"        # ← your native language voice
+EDGE_EN_VOICE = "en-US-AvaNeural"  # ← your native language voice
 
 # say engine (offline fallback) — macOS voices
 ZH_VOICE = "Meijia (Premium)"
@@ -188,8 +188,8 @@ Premium voices (e.g. `"Meijia (Premium)"`) sound significantly better but must b
 If your Anki note type uses different field names, update `fetch_from_anki()`:
 
 ```python
-hanzi = fields.get("Sentence", {}).get("value", "")    # ← your "front" field
-english = fields.get("English", {}).get("value", "")    # ← your "back" field
+hanzi = fields.get("Sentence", {}).get("value", "")  # ← your "front" field
+english = fields.get("English", {}).get("value", "")  # ← your "back" field
 ```
 
 ### TTS sample rate
