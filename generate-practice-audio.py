@@ -10,7 +10,10 @@ Usage:
   python3 generate-practice-audio.py --source file --file vocab.txt
   python3 generate-practice-audio.py --source anki --query 'deck:"HSK 1::Claude"' --batch 20
 
-Requires: macOS say, ffmpeg (for silence generation, concatenation, and AAC encoding).
+Requires: ffmpeg (for silence generation, concatenation, and AAC encoding).
+Default TTS engine is 'edge' (Azure neural voices via the edge-tts CLI — install
+with `uv tool install edge-tts`, no API key needed, network required). Pass
+--engine say for the offline macOS fallback.
 If using --source anki: Anki running with AnkiConnect (port 8765).
 """
 
@@ -18,6 +21,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -33,6 +37,10 @@ ANKI_URL = "http://localhost:8765"
 
 ZH_VOICE = "Meijia (Premium)"  # Taiwan Mandarin
 EN_VOICE = "Zoe (Premium)"  # US English
+
+# Azure neural voices used by --engine edge (via the edge-tts CLI).
+EDGE_ZH_VOICE = "zh-TW-HsiaoChenNeural"  # Taiwan Mandarin
+EDGE_EN_VOICE = "en-US-AvaNeural"  # US English
 
 PAUSE_SECONDS = 4  # silence gap for recall
 WORKERS = 4
@@ -194,6 +202,11 @@ def parse_file(path):
 
 TTS_SAMPLE_RATE = 22050  # macOS say outputs 22050 Hz mono
 
+# Set from --engine in main(); read by build_track workers after that. The CLI
+# defaults to "edge"; the module-level default stays "say" so direct function
+# calls (and the test suite) work offline.
+TTS_ENGINE = "say"
+
 
 def say_to_wav(text, voice, out_path):
     """Generate speech audio using macOS say → WAV (for consistent concat)."""
@@ -204,11 +217,39 @@ def say_to_wav(text, voice, out_path):
         capture_output=True,
     )
     subprocess.run(
-        ["ffmpeg", "-y", "-i", aiff, out_path],
+        ["ffmpeg", "-y", "-i", aiff, "-ar", str(TTS_SAMPLE_RATE), "-ac", "1", out_path],
         check=True,
         capture_output=True,
     )
     os.remove(aiff)
+
+
+def edge_tts_to_wav(text, voice, out_path):
+    """Generate speech via the edge-tts CLI (Azure neural voices) → WAV.
+
+    edge-tts outputs 24 kHz mono MP3; resample to TTS_SAMPLE_RATE so every
+    concat part shares one rate (see Critical Invariant in CLAUDE.md).
+    """
+    mp3 = out_path + ".mp3"
+    subprocess.run(
+        ["edge-tts", "--voice", voice, "--text", text, "--write-media", mp3],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", mp3, "-ar", str(TTS_SAMPLE_RATE), "-ac", "1", out_path],
+        check=True,
+        capture_output=True,
+    )
+    os.remove(mp3)
+
+
+def tts_to_wav(text, lang, out_path):
+    """Generate speech for 'zh' or 'en' text using the configured engine."""
+    if TTS_ENGINE == "edge":
+        edge_tts_to_wav(text, EDGE_ZH_VOICE if lang == "zh" else EDGE_EN_VOICE, out_path)
+    else:
+        say_to_wav(text, ZH_VOICE if lang == "zh" else EN_VOICE, out_path)
 
 
 def generate_silence(duration_s, out_path):
@@ -303,8 +344,8 @@ def build_track(idx, entry, tmpdir, mode, pause):
     en_path = os.path.join(tmpdir, f"{idx:04d}_en.wav")
     silence_path = os.path.join(tmpdir, f"{idx:04d}_silence.wav")
 
-    say_to_wav(entry["hanzi"], ZH_VOICE, zh_path)
-    say_to_wav(entry["english"], EN_VOICE, en_path)
+    tts_to_wav(entry["hanzi"], "zh", zh_path)
+    tts_to_wav(entry["english"], "en", en_path)
     generate_silence(pause, silence_path)
 
     if mode == "recognition":
@@ -359,6 +400,13 @@ def main():
         help="Which track type(s) to generate (default: both)",
     )
     parser.add_argument(
+        "--engine",
+        choices=["edge", "say"],
+        default="edge",
+        help="TTS engine: 'edge' (Azure neural voices via edge-tts CLI, needs "
+        "network) or 'say' (macOS, offline fallback) (default: edge)",
+    )
+    parser.add_argument(
         "--pause",
         type=int,
         default=PAUSE_SECONDS,
@@ -394,6 +442,12 @@ def main():
         subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
     except FileNotFoundError:
         print("ERROR: ffmpeg not found. Install with: brew install ffmpeg")
+        sys.exit(1)
+
+    global TTS_ENGINE
+    TTS_ENGINE = args.engine
+    if TTS_ENGINE == "edge" and not shutil.which("edge-tts"):
+        print("ERROR: edge-tts not found. Install with: uv tool install edge-tts")
         sys.exit(1)
 
     # Load entries
